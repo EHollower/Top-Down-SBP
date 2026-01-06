@@ -187,7 +187,7 @@ double compute_null_H(const Subgraph& s) {  // just the entropy, don't include t
 	return result;
 }
 
-void block_split(const Graph& G, Blockmodel& B, int x, int c_prim) {
+void block_split(Blockmodel& B, int x, int c_prim) {
 	double H = compute_H(B);
 	
 	struct best_split_with_deltaH {
@@ -302,6 +302,36 @@ void batched_parallel_mcmc(Blockmodel& B, double t, int n, int x, double tempera
 		deltaH = compute_H(B) - H;
 		++i;
 	} while(deltaH > t * H && i < x);
+}
+
+Blockmodel stochastic_block_partitioning(Graph& G, int num_steps = 100) {
+	Blockmodel B(&G, 1);
+	
+	B.assignment.resize(B.G->num_vertices, 0);
+	B.update_matrix();
+	
+	double H = compute_H(B);
+	double deltaH = std::numeric_limits<double>::max();
+	
+	int i=0;
+	do {
+		block_split(B, 10, 100);
+		batched_parallel_mcmc(B, 1.0, 100, 100);
+		
+		deltaH = compute_H(B) - H; 
+		
+		++i;
+	}while(i < num_steps);
+	
+	return B;
+}
+
+Graph read_graph(std::istream& is) {
+	Graph G;
+	
+	int num_vertices = 0;
+	is >> num_vertices;
+	
 }
 
 int main(){
