@@ -73,6 +73,46 @@ double compute_H(const Blockmodel& B) {  // description length (traditional bloc
 	return description_length;
 }
 
+double compute_H_for_vertex_move(const Blockmodel& B, int vertex, int new_cluster) {  // description length (traditional blockmodel)
+	if(B.G == NULL) {
+		std::cout << "compute_H: Blockmodel with no graph\n";
+		return 0.0;
+	}
+	
+	std::vector<int> e_rs_minus(B.num_clusters, 0);
+	std::vector<int> e_rs_plus(B.num_clusters, 0);
+	
+	for(int neighbour : B.G->adj_list[vertex]) {
+		--e_rs_minus[B.assignment[neighbour]];
+		e_rs_minus[B.assignment[neighbour]] -= (B.assignment[vertex] == B.assignment[neighbour]);
+	
+		++e_rs_plus[B.assignment[neighbour]];
+		e_rs_plus[B.assignment[neighbour]] += (B.assignment[vertex] == B.assignment[neighbour]);
+	}
+	
+	
+	// should work for directed graphs; TODO: implement for undirected
+	double entropy = 0.0;
+	for(int i=0;i<B.num_clusters; ++i) {
+		for(int j=0; j < B.num_clusters; ++j) {
+			int old_cluster = B.assignment[vertex];
+			int e_rs = B.B[i][j] + ((i == old_cluster) * e_rs_minus[j]) + ((i == new_cluster) * e_rs_plus[j]);
+			int n_r = B.num_vertices_per_block[i] - (B.assignment[vertex] == i) + (new_cluster == i);
+			int n_s = B.num_vertices_per_block[j] - (B.assignment[vertex] == j) + (new_cluster == j);
+			
+			entropy += e_rs * log(e_rs/(n_r * n_s));
+		}
+	}
+	
+	entropy = B.G->num_edges - 0.5 * entropy;
+	
+	double x = (B.num_clusters * (B.num_clusters + 1)) / (2 * B.G->num_edges);
+	double model_information = B.G->num_edges * ((1 + x) * log(1 + x) - x * log(x)) + B.G->num_vertices * log(B.num_clusters);
+	
+	double description_length = entropy + model_information;
+	return description_length;
+}
+
 void extract_subgraphs(const Blockmodel& B, std::vector<Subgraph>& subgraphs) {
 	double threshold = 1.0;
 	// subgraphs assumed to have size == B.num_clusters
@@ -192,11 +232,40 @@ void block_split(const Graph& G, Blockmodel& B, int x, int c_prim) {
 	B.update_matrix();
 }
 
-int propose_move(Blockmodel& B, int node) {
-	return -1;
+int propose_move(Blockmodel& B, int vertex, double H, double temperature) {
+	int current_cluster = B.assignment[vertex];
+	
+	int best_cluster = current_cluster;
+	double best_deltaH = std::numeric_limits<double>::max();
+	
+	for(int c=0; c < B.num_clusters; ++c) {
+		if(c != current_cluster) {
+			double H_prim = compute_H_for_vertex_move(B, vertex, c);
+			double deltaH = H_prim - H;
+			
+			if(deltaH < best_deltaH) {
+				best_deltaH = deltaH;
+				best_cluster = c;
+			}
+		}
+	}
+	
+	if(best_deltaH < 0.0) {
+		return best_cluster;
+	}
+	else {
+		double acceptance_probability = std::exp(-best_deltaH / temperature);
+		if(random01() < acceptance_probability) {  // acceptance_probability in [0, 1]
+			return best_cluster;
+		}
+		else {
+			return -1;
+		}
+	}
+	
 }
 
-void batched_parallel_mcmc(Blockmodel& B, double t, int n, int x) {
+void batched_parallel_mcmc(Blockmodel& B, double t, int n, int x, double temperature = 1.0) {
 	double H = std::numeric_limits<double>::max();
 	int i = 0;
 	double deltaH = std::numeric_limits<double>::max();
@@ -218,7 +287,7 @@ void batched_parallel_mcmc(Blockmodel& B, double t, int n, int x) {
 			std::vector<int> M(B.G->num_vertices, -1);
 			
 			for(int i=start; i < end; ++i) {
-				M[V[i]] = propose_move(B, V[i]); // TODO
+				M[V[i]] = propose_move(B, V[i], H, temperature);
 			}
 			
 			for(int v=0; v<M.size(); ++v) {
