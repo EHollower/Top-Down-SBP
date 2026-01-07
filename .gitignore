@@ -1,0 +1,33 @@
+# Build artifacts
+bin/
+*.o
+*.out
+core
+
+# Benchmark results (CSV files change on each run)
+results/*.csv
+
+# Temporary and debug files
+benchmark_log.txt
+test_*.cpp
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+.*.swp
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Papers and documentation (excluded)
+*.pdf
+
+# Personal notes and presentations (excluded)
+notes/
+beamer/
