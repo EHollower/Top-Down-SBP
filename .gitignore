@@ -31,3 +31,6 @@ Thumbs.db
 # Personal notes and presentations (excluded)
 notes/
 beamer/
+
+# IDE project directory
+IDE_project/

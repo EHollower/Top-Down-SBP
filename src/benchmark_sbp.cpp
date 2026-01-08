@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <vector>
 #include <string>
+#include <filesystem>
 
 namespace sbp {
     void top_down_sbp(Graph&, Blockmodel&, int, int);
@@ -155,7 +156,7 @@ int main() {
     const int PROPOSALS_PER_SPLIT = 50;
     
     // Create results directory if it doesn't exist
-    system("mkdir -p results");
+    std::filesystem::create_directories("results");
     
     // Open CSV file
     std::ofstream csv("results/benchmark_results.csv");

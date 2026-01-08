@@ -10,7 +10,18 @@
 #include <map>
 #include <limits>
 #include <iostream>
-#include <sys/resource.h>
+
+
+#if defined(_WIN32)
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <psapi.h>
+#else
+    #include <sys/resource.h>
+#endif
+
 
 namespace sbp {
 
@@ -247,12 +258,36 @@ inline double compute_H_normalized(const Blockmodel& BM) {
 }
 
 // Get peak memory usage in MB
-inline size_t get_peak_memory_mb() {
+inline std::size_t get_peak_memory_mb()
+{
+#if defined(_WIN32)
+
+    PROCESS_MEMORY_COUNTERS info;
+    GetProcessMemoryInfo(
+        GetCurrentProcess(),
+        &info,
+        sizeof(info)
+    );
+
+    // PeakWorkingSetSize is in bytes
+    return static_cast<std::size_t>(info.PeakWorkingSetSize / (1024 * 1024));
+
+#else
+
     struct rusage usage;
     getrusage(RUSAGE_SELF, &usage);
+
+#if defined(__APPLE__)
+    // ru_maxrss is in bytes on macOS
+    return static_cast<std::size_t>(usage.ru_maxrss / (1024 * 1024));
+#else
     // ru_maxrss is in kilobytes on Linux
-    return usage.ru_maxrss / 1024; // Convert to MB
+    return static_cast<std::size_t>(usage.ru_maxrss / 1024);
+#endif
+
+#endif
 }
+
 
 } // namespace sbp
 
