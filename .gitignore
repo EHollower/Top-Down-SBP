@@ -2,6 +2,7 @@
 bin/
 *.o
 *.out
+*.exe
 core
 
 # Benchmark results (CSV files change on each run)

@@ -88,3 +88,4 @@ project "sbp_benchmark"
         "src/bottom_up_sbp.cpp",
         "src/benchmark_sbp.cpp"
     }
+
