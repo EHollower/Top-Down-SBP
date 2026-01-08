@@ -169,7 +169,7 @@ void top_down_sbp(Graph& G, Blockmodel& BM, int max_clusters, int proposals_per_
         applied = true;
         
         // Apply MCMC refinement after each split (reduced for stability)
-        mcmc_refine(BM, std::min(500, 5 * BM.num_clusters));
+        mcmc_refine(BM, 10 * BM.G->num_vertices);
 
         if (!applied) break;
     }
