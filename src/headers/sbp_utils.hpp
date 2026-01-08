@@ -8,9 +8,6 @@
 #include <thread>
 #include <omp.h>
 #include <map>
-#include <limits>
-#include <iostream>
-
 
 #if defined(_WIN32)
     #ifndef NOMINMAX
