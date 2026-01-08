@@ -38,7 +38,14 @@ Blockmodel connectivity_snowball_split(Subgraph& sub, int num_proposals) {
                     if (assignment[neighbor] == 0) score0++;
                     else if (assignment[neighbor] == 1) score1++;
                 }
-                assignment[v] = (score0 >= score1) ? 0 : 1;
+                
+                if (score0 > score1) assignment[v] = 0;
+                else if (score1 > score0) assignment[v] = 1;
+                else {
+                    // Break ties randomly to avoid bias
+                    std::uniform_int_distribution<> tie_dist(0, 1);
+                    assignment[v] = tie_dist(gen);
+                }
             }
 
             current_bm.assignment = std::move(assignment);
