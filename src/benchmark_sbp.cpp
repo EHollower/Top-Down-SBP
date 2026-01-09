@@ -1,4 +1,5 @@
 #include "headers/sbp_utils.hpp"
+#include "headers/graph_generation.hpp"
 
 #include <chrono>
 #include <vector>
@@ -28,51 +29,6 @@ struct BenchmarkResult {
     int clusters_found;
 };
 
-struct GraphConfig {
-    int n, k;
-    double p_in, p_out;
-};
-
-// Generate Stochastic Block Model graph
-sbp::Graph generate_sbm_graph(int n, int num_blocks, double p_in, double p_out, 
-                               std::vector<int>& true_assignment, int seed) {
-    sbp::Graph G;
-    G.num_vertices = n;
-    G.adj_list.resize(n);
-    
-    true_assignment.resize(n);
-    for(int i = 0; i < n; ++i) {
-        true_assignment[i] = i % num_blocks;
-    }
-
-    std::mt19937 gen(seed);
-    std::uniform_real_distribution<> dist(0.0, 1.0);
-
-    for(int i = 0; i < n; ++i) {
-        for(int j = i + 1; j < n; ++j) {
-            double p = (true_assignment[i] == true_assignment[j]) ? p_in : p_out;
-            if (dist(gen) < p) {
-                G.adj_list[i].push_back(j);
-                G.adj_list[j].push_back(i);
-                G.num_edges++;
-            }
-        }
-    }
-    
-    // Validate graph
-    for(int i = 0; i < n; ++i) {
-        for(int j : G.adj_list[i]) {
-            if (j < 0 || j >= n) {
-                std::cerr << "ERROR: Graph validation failed! Vertex " << i 
-                          << " has edge to out-of-bounds vertex " << j 
-                          << " (n=" << n << ")" << std::endl;
-                std::abort();
-            }
-        }
-    }
-    
-    return G;
-}
 
 // Run single benchmark
 BenchmarkResult run_single_benchmark(
@@ -140,69 +96,34 @@ void append_result_to_csv(std::ofstream& csv, const BenchmarkResult& result) {
     csv.flush(); // Flush after each write so we can see progress
 }
 
-std::vector<GraphConfig> read_graph_configs_from_csv(const std::string& path) {
-    std::vector<GraphConfig> configs;
+int main(int argc, char* argv[]) {
+    GraphGenerationMethod graphGenerationMethod = GraphGenerationMethod::STANDARD;
 
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        std::cerr << "Error: Could not open the configuration file: " << path << "\n";
-        std::exit(1);
+    if (argc > 1) {
+        std::string arg = argv[1];
+        if(arg == "standard")
+            graphGenerationMethod = GraphGenerationMethod::STANDARD;
+        if (arg == "lfr")
+            graphGenerationMethod = GraphGenerationMethod::LFR;
     }
 
-    std::string line;
-
-    // Skip header line
-    if (!std::getline(f, line)) {
-        return configs; // empty file
-    }
-
-    while (std::getline(f, line)) {
-        // Skip empty lines
-        if (line.empty())
-            continue;
-
-        std::stringstream ss(line);
-        std::string token;
-        GraphConfig cfg;
-
-        try {
-            // Parse n
-            if (!std::getline(ss, token, ',')) continue;
-            cfg.n = std::stoi(token);
-
-            // Parse k
-            if (!std::getline(ss, token, ',')) continue;
-            cfg.k = std::stoi(token);
-
-            // Parse p_in
-            if (!std::getline(ss, token, ',')) continue;
-            cfg.p_in = std::stod(token);
-
-            // Parse p_out
-            if (!std::getline(ss, token, ',')) continue;
-            cfg.p_out = std::stod(token);
-
-            configs.push_back(cfg);
-        }
-        catch (const std::invalid_argument& e) {
-
-        }
-        catch (const std::out_of_range& e) {
-
-        }
-    }
-
-    return configs;
-}
-
-int main() {
     std::cout << "=== SBP Benchmark Suite ===\n";
     std::cout << "Graphs: 1K, 2K, 5K vertices (5 runs each)\n";
     std::cout << "Algorithms: Top-Down SBP, Bottom-Up SBP\n";
+
+    if (graphGenerationMethod == GraphGenerationMethod::STANDARD) {
+        std::cout << "Graph generation method: standard\n";
+    }
+    else {
+        if (graphGenerationMethod == GraphGenerationMethod::LFR) {
+            std::cout << "Graph generation method: lfr\n";
+        }
+    }
+
     std::cout << "Estimated runtime: ~5-10 minutes\n\n";
     
     // Graph configurations (conservative sizes for stability)
-    std::vector<GraphConfig> configs = read_graph_configs_from_csv("../scripts/graph_config.csv");
+    std::vector<GraphConfigBase*> configs = read_graph_configs_from_csv("../scripts/graph_config.csv", graphGenerationMethod);
     
     const int NUM_RUNS = 5;
     const int PROPOSALS_PER_SPLIT = 50;
@@ -219,9 +140,11 @@ int main() {
     write_csv_header(csv);
     
     int graph_id = 0;
-    for (const auto& config : configs) {
-        std::cout << "\n=== Graph " << (graph_id + 1) << ": N=" << config.n 
-                  << ", K=" << config.k << " ===" << std::endl;
+    for (auto& config : configs) {
+        std::cout << "\n=== Graph " << (graph_id + 1) << ": N=" << config->n;
+        if (graphGenerationMethod == GraphGenerationMethod::STANDARD)
+            std::cout << ", K=" << config->k;
+        std::cout << " ===" << std::endl;
         
         for (int run = 0; run < NUM_RUNS; ++run) {
             std::cout << "  Run " << (run + 1) << "/" << NUM_RUNS << "..." << std::flush;
@@ -229,31 +152,36 @@ int main() {
             // Generate graph with unique seed per run
             std::vector<int> true_labels;
             int seed = graph_id * 1000 + run;
-            sbp::Graph G = generate_sbm_graph(config.n, config.k, 
-                                               config.p_in, config.p_out, 
-                                               true_labels, seed);
+
+            sbp::Graph G = config->generateGraph(true_labels, seed);
             
             // Run Top-Down
             auto td_result = run_single_benchmark(
-                G, true_labels, graph_id, config.k,
+                G, true_labels, graph_id, config->k,
                 "TopDown", run, PROPOSALS_PER_SPLIT);
             append_result_to_csv(csv, td_result);
             
             // Run Bottom-Up
             auto bu_result = run_single_benchmark(
-                G, true_labels, graph_id, config.k,
+                G, true_labels, graph_id, config->k,
                 "BottomUp", run, PROPOSALS_PER_SPLIT);
             append_result_to_csv(csv, bu_result);
             
-            std::cout << " Done (TD: " << std::fixed << std::setprecision(3) 
-                      << td_result.runtime_seconds << "s, BU: " 
-                      << bu_result.runtime_seconds << "s)" << std::endl;
+            std::cout << " Done (TD: " << std::fixed << std::setprecision(3)
+                << td_result.runtime_seconds << "s, BU: "
+                << bu_result.runtime_seconds << "s)";
+            
+            if (graphGenerationMethod == GraphGenerationMethod::LFR) {
+                std::cout << "  K=" << config->k;
+            }
+            std::cout << std::endl;
         }
         
         graph_id++;
     }
     
     csv.close();
+    clear_configs(configs);
     
     std::cout << "\n✅ Benchmark complete! Results saved to results/benchmark_results.csv\n";
     std::cout << "\nRun './scripts/analyze_results.sh' for quick statistics\n";
