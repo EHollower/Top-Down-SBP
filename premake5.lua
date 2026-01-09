@@ -1,4 +1,5 @@
 local build_root = "IDE_project"
+local BIN_DIR = "bin"
 
 workspace "SBP"
     architecture "x64"
@@ -6,7 +7,8 @@ workspace "SBP"
     location (build_root)
 
     -- Common output layout
-    targetdir (build_root .. "/bin/%{cfg.buildcfg}")
+    -- targetdir (build_root .. "/bin/%{cfg.buildcfg}")
+    targetdir (BIN_DIR)
     objdir (build_root .. "/obj/%{prj.name}/%{cfg.buildcfg}")
 
 -- =========================================================

@@ -140,6 +140,61 @@ void append_result_to_csv(std::ofstream& csv, const BenchmarkResult& result) {
     csv.flush(); // Flush after each write so we can see progress
 }
 
+std::vector<GraphConfig> read_graph_configs_from_csv(const std::string& path) {
+    std::vector<GraphConfig> configs;
+
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        std::cerr << "Error: Could not open the configuration file: " << path << "\n";
+        std::exit(1);
+    }
+
+    std::string line;
+
+    // Skip header line
+    if (!std::getline(f, line)) {
+        return configs; // empty file
+    }
+
+    while (std::getline(f, line)) {
+        // Skip empty lines
+        if (line.empty())
+            continue;
+
+        std::stringstream ss(line);
+        std::string token;
+        GraphConfig cfg;
+
+        try {
+            // Parse n
+            if (!std::getline(ss, token, ',')) continue;
+            cfg.n = std::stoi(token);
+
+            // Parse k
+            if (!std::getline(ss, token, ',')) continue;
+            cfg.k = std::stoi(token);
+
+            // Parse p_in
+            if (!std::getline(ss, token, ',')) continue;
+            cfg.p_in = std::stod(token);
+
+            // Parse p_out
+            if (!std::getline(ss, token, ',')) continue;
+            cfg.p_out = std::stod(token);
+
+            configs.push_back(cfg);
+        }
+        catch (const std::invalid_argument& e) {
+
+        }
+        catch (const std::out_of_range& e) {
+
+        }
+    }
+
+    return configs;
+}
+
 int main() {
     std::cout << "=== SBP Benchmark Suite ===\n";
     std::cout << "Graphs: 1K, 2K, 5K vertices (5 runs each)\n";
@@ -147,11 +202,7 @@ int main() {
     std::cout << "Estimated runtime: ~5-10 minutes\n\n";
     
     // Graph configurations (conservative sizes for stability)
-    std::vector<GraphConfig> configs = {
-        {200, 5, 0.2, 0.02},     // Small
-        {400, 7, 0.2, 0.02},     // Medium  
-        {800, 9, 0.2, 0.02}      // Large
-    };
+    std::vector<GraphConfig> configs = read_graph_configs_from_csv("../scripts/graph_config.csv");
     
     const int NUM_RUNS = 5;
     const int PROPOSALS_PER_SPLIT = 50;

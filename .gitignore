@@ -7,6 +7,8 @@ core
 
 # Benchmark results (CSV files change on each run)
 results/*.csv
+scripts/*.csv
+scripts/results/
 
 # Temporary and debug files
 benchmark_log.txt
@@ -35,3 +37,6 @@ beamer/
 
 # IDE project directory
 IDE_project/
+
+# Other
+scripts/__pycache__/
