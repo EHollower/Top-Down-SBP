@@ -202,35 +202,74 @@ inline int mcmc_proposal(const Graph& G, const Blockmodel& BM, int v) {
 }
 
 // MCMC refinement: iteratively propose moves and accept if they improve H
+// Parallel version using per-thread B matrices for maximum performance
 inline void mcmc_refine(Blockmodel& BM, int num_iterations = 100) {
     if (!BM.G || BM.num_clusters <= 1) return;
     
-    thread_local std::mt19937 gen(std::random_device{}() + std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    std::uniform_int_distribution<int> vertex_dist(0, BM.G->num_vertices - 1);
+    // Store best result found across all threads
+    double best_H = compute_H(BM);
+    std::vector<int> best_assignment = BM.assignment;
     
-    for (int iter = 0; iter < num_iterations; ++iter) {
-        // Pick random vertex
-        int v = vertex_dist(gen);
-        int old_cluster = BM.assignment[v];
+    #pragma omp parallel
+    {
+        // Thread-local RNG (already thread-safe)
+        thread_local std::mt19937 gen(std::random_device{}() + std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        std::uniform_int_distribution<int> vertex_dist(0, BM.G->num_vertices - 1);
         
-        // Propose new cluster via MCMC
-        int new_cluster = mcmc_proposal(*BM.G, BM, v);
+        // Thread-local copy of blockmodel
+        Blockmodel local_BM;
+        local_BM.G = BM.G;  // Graph is read-only, safe to share
+        local_BM.num_clusters = BM.num_clusters;
+        local_BM.assignment = BM.assignment;  // Deep copy
+        local_BM.num_vertices_per_block = BM.num_vertices_per_block;  // Deep copy
+        local_BM.B.assign(BM.num_clusters, std::vector<int>(BM.num_clusters, 0));
+        for (int i = 0; i < BM.num_clusters; ++i) {
+            for (int j = 0; j < BM.num_clusters; ++j) {
+                local_BM.B[i][j] = BM.B[i][j];  // Deep copy B matrix
+            }
+        }
         
-        if (new_cluster == old_cluster) continue;
+        // Each thread performs iterations independently
+        #pragma omp for nowait
+        for (int iter = 0; iter < num_iterations; ++iter) {
+            // Pick random vertex
+            int v = vertex_dist(gen);
+            int old_cluster = local_BM.assignment[v];
+            
+            // Propose new cluster via MCMC
+            int new_cluster = mcmc_proposal(*local_BM.G, local_BM, v);
+            
+            if (new_cluster == old_cluster) continue;
+            
+            // Calculate delta H for this move
+            double h_before = compute_H(local_BM);
+            local_BM.move_vertex(v, new_cluster);
+            double h_after = compute_H(local_BM);
+            
+            // Accept if improves
+            if (h_after < h_before) {
+                // Accept move (already applied)
+            } else {
+                // Reject: revert move
+                local_BM.move_vertex(v, old_cluster);
+            }
+        }
         
-        // Calculate delta H for this move
-        double h_before = compute_H(BM);
-        BM.move_vertex(v, new_cluster);
-        double h_after = compute_H(BM);
+        // After all iterations, check if this thread found better solution
+        double local_H = compute_H(local_BM);
         
-        // Accept if improves or with probability based on temperature
-        if (h_after < h_before) {
-            // Accept move (already applied)
-        } else {
-            // Reject: revert move
-            BM.move_vertex(v, old_cluster);
+        #pragma omp critical
+        {
+            if (local_H < best_H) {
+                best_H = local_H;
+                best_assignment = local_BM.assignment;
+            }
         }
     }
+    
+    // Apply best solution found
+    BM.assignment = best_assignment;
+    BM.update_matrix();
 }
 
 // Compute H_null: description length with all vertices in one cluster

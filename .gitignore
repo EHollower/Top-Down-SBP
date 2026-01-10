@@ -1,18 +1,37 @@
 # Build artifacts
 bin/
+build/
 *.o
 *.out
 *.exe
+*.so
+*.a
+*.dylib
 core
 
-# Benchmark results (CSV files change on each run)
+# Premake generated files
+IDE_project/
+Makefile
+*.make
+
+# Premake5 binary (downloaded separately per platform)
+premake5
+premake5.exe
+
+# Benchmark results (timestamped files change on each run)
 results/*.csv
+results/*_202*.txt
+results/thread_scaling_*.txt
+results/graph_size_test_*.txt
+results/benchmark_run.log
 scripts/*.csv
 scripts/results/
 
 # Temporary and debug files
 benchmark_log.txt
 test_*.cpp
+*.log
+/tmp/
 
 # Editor temporary files
 *.swp
@@ -23,6 +42,7 @@ test_*.cpp
 # IDE settings
 .vscode/
 .idea/
+*.code-workspace
 
 # OS files
 .DS_Store
@@ -35,8 +55,7 @@ Thumbs.db
 notes/
 beamer/
 
-# IDE project directory
-IDE_project/
-
-# Other
+# Python cache
+__pycache__/
+*.pyc
 scripts/__pycache__/

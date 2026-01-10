@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Estimated runtime: ~5-10 minutes\n\n";
     
     // Graph configurations (conservative sizes for stability)
-    std::vector<GraphConfigBase*> configs = read_graph_configs_from_csv("../scripts/graph_config.csv", graphGenerationMethod);
+    std::vector<GraphConfigBase*> configs = read_graph_configs_from_csv("scripts/graph_config.csv", graphGenerationMethod);
     
     const int NUM_RUNS = 5;
     const int PROPOSALS_PER_SPLIT = 50;
