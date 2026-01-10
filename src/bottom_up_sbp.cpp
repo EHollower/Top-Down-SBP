@@ -38,13 +38,16 @@ void bottom_up_sbp(Graph& G, Blockmodel& BM, int target_clusters) {
     }
     BM.update_matrix();
     
-    // Skip initial MCMC refinement - too expensive with N clusters
-    // We'll refine after merges instead
+    // Initial MCMC refinement to cluster vertices into communities  
+    // Moderate iterations to balance quality and speed
+    int initial_iters = std::min(1000, 3 * BM.G->num_vertices);
+    mcmc_refine(BM, initial_iters);
 
     while (BM.num_clusters > target_clusters) {
         std::vector<MergeProposal> proposals;
         
         // Collect merge proposals only for connected clusters (parallelized)
+        // Always use accurate ΔH calculation for best quality
         #pragma omp parallel
         {
             std::vector<MergeProposal> local_proposals;
@@ -58,13 +61,14 @@ void bottom_up_sbp(Graph& G, Blockmodel& BM, int target_clusters) {
                     // Only consider merging clusters that have edges between them
                     if (BM.B[i][j] == 0 && BM.B[j][i] == 0) continue;
                     
-                    // Calculate actual Delta H for merging i and j
-                    // Prefer merges with high edge density between clusters
-                    int edges_between = BM.B[i][j] + BM.B[j][i];
-                    int size_product = BM.num_vertices_per_block[i] * BM.num_vertices_per_block[j];
-                    double merge_score = (double)edges_between / (size_product > 0 ? size_product : 1);
+                    // Calculate accurate incremental ΔH for every merge
+                    // This ensures maximum quality by choosing MDL-optimal merges
+                    double deltaH = compute_delta_H_merge(BM, i, j);
                     
-                    local_proposals.push_back({i, j, -merge_score}); // Negative so we can sort ascending
+                    // Only propose merges that improve MDL (ΔH < 0)
+                    if (deltaH < 0) {
+                        local_proposals.push_back({i, j, deltaH});
+                    }
                 }
             }
             
@@ -76,12 +80,12 @@ void bottom_up_sbp(Graph& G, Blockmodel& BM, int target_clusters) {
 
         if (proposals.empty()) break;
         
-        // Sort by merge score (highest edge density first)
+        // Sort by deltaH (best merges first - most negative ΔH = best MDL improvement)
         std::sort(proposals.begin(), proposals.end(), 
                   [](const MergeProposal& a, const MergeProposal& b) { return a.deltaH < b.deltaH; });
         
-        // Select independent merges that can be done in parallel
-        int max_batch = std::min(100, BM.num_clusters / 2);  // Don't merge too many at once
+        // Small batch size for quality - allows frequent MCMC refinement
+        int max_batch = std::min(5, std::max(1, BM.num_clusters / 20));
         auto independent_merges = select_independent_merges(proposals, max_batch);
         
         // Apply all independent merges in parallel
@@ -121,9 +125,9 @@ void bottom_up_sbp(Graph& G, Blockmodel& BM, int target_clusters) {
         BM.num_vertices_per_block.assign(BM.num_clusters, 0);
         BM.update_matrix();
         
-        // Apply MCMC refinement after each merge (reduced for performance)
-        // Now parallelized for much better performance
-        int refine_iters = std::min(200, 10 * BM.num_clusters);
+        // Apply MCMC refinement after each merge batch
+        // Use full Top-Down quality: 10*N iterations for accuracy
+        int refine_iters = 10 * BM.G->num_vertices;
         mcmc_refine(BM, refine_iters);
         
         if (BM.num_clusters <= target_clusters) break;

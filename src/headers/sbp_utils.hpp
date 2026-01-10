@@ -120,6 +120,91 @@ inline double compute_H(const Blockmodel& BM) {
     return -entropy + model_complexity;
 }
 
+// Compute incremental change in H (MDL) when merging clusters c1 and c2
+// Returns ΔH (negative = improvement, positive = degradation)
+inline double compute_delta_H_merge(const Blockmodel& BM, int c1, int c2) {
+    if (!BM.G || c1 < 0 || c2 < 0 || c1 >= BM.num_clusters || c2 >= BM.num_clusters) {
+        return 1e18;  // Invalid merge
+    }
+    if (c1 == c2) return 0.0;  // No change
+    
+    int n1 = BM.num_vertices_per_block[c1];
+    int n2 = BM.num_vertices_per_block[c2];
+    if (n1 == 0 || n2 == 0) return 1e18;  // Invalid merge
+    
+    int n_merged = n1 + n2;
+    double delta_entropy = 0.0;
+    
+    // Step 1: Remove entropy contributions from c1 and c2 separately
+    for (int k = 0; k < BM.num_clusters; ++k) {
+        if (BM.num_vertices_per_block[k] == 0) continue;
+        int nk = BM.num_vertices_per_block[k];
+        
+        // Remove c1 -> k edges
+        if (BM.B[c1][k] > 0) {
+            double p_1k = (double)BM.B[c1][k] / ((double)n1 * nk);
+            delta_entropy -= BM.B[c1][k] * std::log(p_1k);
+        }
+        
+        // Remove k -> c1 edges (if k != c1 to avoid double counting diagonal)
+        if (k != c1 && BM.B[k][c1] > 0) {
+            double p_k1 = (double)BM.B[k][c1] / ((double)nk * n1);
+            delta_entropy -= BM.B[k][c1] * std::log(p_k1);
+        }
+        
+        // Remove c2 -> k edges
+        if (BM.B[c2][k] > 0) {
+            double p_2k = (double)BM.B[c2][k] / ((double)n2 * nk);
+            delta_entropy -= BM.B[c2][k] * std::log(p_2k);
+        }
+        
+        // Remove k -> c2 edges (if k != c2)
+        if (k != c2 && BM.B[k][c2] > 0) {
+            double p_k2 = (double)BM.B[k][c2] / ((double)nk * n2);
+            delta_entropy -= BM.B[k][c2] * std::log(p_k2);
+        }
+    }
+    
+    // Step 2: Add entropy contributions from merged cluster
+    for (int k = 0; k < BM.num_clusters; ++k) {
+        if (BM.num_vertices_per_block[k] == 0) continue;
+        if (k == c1 || k == c2) continue;  // Skip the clusters being merged
+        
+        int nk = BM.num_vertices_per_block[k];
+        
+        // Add merged -> k edges
+        int B_merged_k = BM.B[c1][k] + BM.B[c2][k];
+        if (B_merged_k > 0) {
+            double p_mk = (double)B_merged_k / ((double)n_merged * nk);
+            delta_entropy += B_merged_k * std::log(p_mk);
+        }
+        
+        // Add k -> merged edges
+        int B_k_merged = BM.B[k][c1] + BM.B[k][c2];
+        if (B_k_merged > 0) {
+            double p_km = (double)B_k_merged / ((double)nk * n_merged);
+            delta_entropy += B_k_merged * std::log(p_km);
+        }
+    }
+    
+    // Step 3: Handle self-edges within merged cluster
+    int B_self = BM.B[c1][c1] + BM.B[c2][c2] + BM.B[c1][c2] + BM.B[c2][c1];
+    if (B_self > 0) {
+        double p_self = (double)B_self / ((double)n_merged * n_merged);
+        delta_entropy += B_self * std::log(p_self);
+    }
+    
+    // Step 4: Model complexity change (one less cluster after merge)
+    // Before: K clusters -> After: K-1 clusters
+    int K = BM.num_clusters;
+    double complexity_before = 0.5 * K * (K + 1) * std::log(BM.G->num_vertices);
+    double complexity_after = 0.5 * (K - 1) * K * std::log(BM.G->num_vertices);
+    double delta_complexity = complexity_after - complexity_before;
+    
+    // ΔH = -Δentropy + Δcomplexity
+    return -delta_entropy + delta_complexity;
+}
+
 inline double calculate_nmi(const std::vector<int>& assignment_a, const std::vector<int>& assignment_b) {
     if (assignment_a.size() != assignment_b.size() || assignment_a.empty()) return 0.0;
     
