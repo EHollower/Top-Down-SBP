@@ -100,6 +100,10 @@ project "sbp_benchmark"
 
 -- Helper function to check if a file exists
 local function file_exists(name)
+	if os.host() == "windows" then
+		name = string.gsub(name, "/", "\\")
+	end
+	
     local f = io.open(name, "r")
     if f ~= nil then
         io.close(f)
@@ -107,6 +111,13 @@ local function file_exists(name)
     else
         return false
     end
+end
+
+local function executable_exists(name)
+	if os.host() == "windows" then
+		name = name .. ".exe"
+	end
+	return file_exists(name)
 end
 
 -- Helper function to get number of CPU cores
@@ -122,21 +133,72 @@ local function get_num_cores()
     return tonumber(result:match("%d+")) or 4
 end
 
+local function build_project_and_compile()
+	local build_cmd = ""
+	if os.host() == "windows" then
+		-- Generate Visual Studio project files
+		os.execute("premake5 vs2022")
+
+		-- Build using MSBuild
+		build_cmd = string.format(
+			'msbuild "%s\\SBP.sln" /p:Configuration=Release /p:Platform=x64 /m',
+			build_root
+		)
+	else
+		-- Linux / Unix-like systems
+		os.execute("./premake5 gmake2")
+
+		build_cmd = string.format(
+			"cd %s && make config=release -j%d",
+			build_root,
+			get_num_cores()
+		)
+	end
+	
+	os.execute(build_cmd)
+end
+
+local function run_executable(exe_name)
+	local file = exe_name
+	if os.host() == "windows" then
+		file = file .. ".exe"
+		file = string.gsub(file, "/", "\\")
+	end
+	
+	if file_exists(file) then
+		os.execute(file)
+	else
+		return false
+	end
+	
+	return true
+end
+
+function mkdir_p(dir)
+    if os.host() == "windows" then
+        -- Windows
+		dir = string.gsub(dir, "/", "\\")
+        os.execute('mkdir "' .. dir .. '" >nul 2>nul')
+    else
+        -- Linux / macOS
+        os.execute('mkdir -p "' .. dir .. '"')
+    end
+end
+
 -- Action: run - Run the experiment with default settings
 newaction {
     trigger = "run",
     description = "Build and run the SBP experiment",
     execute = function()
         print("Building project...")
-        os.execute("./premake5 gmake2")
-        os.execute("cd " .. build_root .. " && make config=release -j" .. get_num_cores())
-        
+        build_project_and_compile()
+		
         print("\n" .. string.rep("=", 60))
         print("Running SBP Experiment")
         print(string.rep("=", 60) .. "\n")
-        
-        if file_exists(BIN_DIR .. "/sbp_experiment") then
-            os.execute(BIN_DIR .. "/sbp_experiment")
+		
+		if executable_exists(BIN_DIR .. "/sbp_experiment") then
+            run_executable(BIN_DIR .. "/sbp_experiment")
         else
             print("ERROR: sbp_experiment not found. Build may have failed.")
             os.exit(1)
@@ -150,18 +212,17 @@ newaction {
     description = "Build and run the full benchmark suite",
     execute = function()
         print("Building project...")
-        os.execute("./premake5 gmake2")
-        os.execute("cd " .. build_root .. " && make config=release -j" .. get_num_cores())
+		build_project_and_compile()
         
         print("\n" .. string.rep("=", 60))
         print("Running Full Benchmark Suite")
         print(string.rep("=", 60) .. "\n")
         
         -- Create results directory if it doesn't exist
-        os.execute("mkdir -p results")
-        
-        if file_exists(BIN_DIR .. "/sbp_benchmark") then
-            os.execute(BIN_DIR .. "/sbp_benchmark")
+        mkdir_p("results")
+		
+        if executable_exists(BIN_DIR .. "/sbp_benchmark") then
+			run_executable(BIN_DIR .. "/sbp_benchmark")
             
             print("\n" .. string.rep("=", 60))
             print("Benchmark complete! Results saved to results/benchmark_results.csv")
@@ -170,7 +231,11 @@ newaction {
             -- Show quick summary if analyze script exists
             if file_exists("scripts/analyze_results.sh") then
                 print("Running analysis...\n")
-                os.execute("./scripts/analyze_results.sh")
+				if os.host() == "windows" then
+					os.execute("bash.exe --login -i " .. "\"scripts\\analyze_results.sh\"")
+				else
+					os.execute("./scripts/analyze_results.sh")
+				end
             end
         else
             print("ERROR: sbp_benchmark not found. Build may have failed.")
@@ -185,10 +250,9 @@ newaction {
     description = "Compare Top-Down vs Bottom-Up with thread scaling",
     execute = function()
         print("Building project...")
-        os.execute("./premake5 gmake2")
-        os.execute("cd " .. build_root .. " && make config=release -j" .. get_num_cores())
+        build_project_and_compile()
         
-        if not file_exists(BIN_DIR .. "/sbp_experiment") then
+        if not executable_exists(BIN_DIR .. "/sbp_experiment") then
             print("ERROR: sbp_experiment not found. Build may have failed.")
             os.exit(1)
         end
@@ -211,7 +275,13 @@ newaction {
         
         for _, threads in ipairs(thread_counts) do
             -- Set environment variable and run
-            local cmd = "OMP_NUM_THREADS=" .. threads .. " " .. BIN_DIR .. "/sbp_experiment 2>&1"
+			local cmd = ""
+			if os.host() == "windows" then -- Windows cmd.exe syntax
+				cmd = string.format('set OMP_NUM_THREADS=%d && "%s" 2>&1', threads, BIN_DIR .. "\\sbp_experiment.exe")
+			else -- Linux / macOS
+				cmd = "OMP_NUM_THREADS=" .. threads .. " " .. BIN_DIR .. "/sbp_experiment 2>&1"
+			end
+			
             local handle = io.popen(cmd)
             local output = handle:read("*a")
             handle:close()
@@ -256,15 +326,21 @@ newaction {
         local threads = _OPTIONS["threads"] or "16"
         
         print("Building project...")
-        os.execute("./premake5 gmake2")
-        os.execute("cd " .. build_root .. " && make config=release -j" .. get_num_cores())
+        build_project_and_compile()
         
-        if file_exists(BIN_DIR .. "/sbp_experiment") then
+        if executable_exists(BIN_DIR .. "/sbp_experiment") then
             print("\n" .. string.rep("=", 60))
             print("Running with " .. threads .. " threads")
             print(string.rep("=", 60) .. "\n")
             
-            os.execute("OMP_NUM_THREADS=" .. threads .. " " .. BIN_DIR .. "/sbp_experiment")
+			local cmd
+			if os.host() == "windows" then -- Windows (cmd.exe)
+				cmd = string.format('set OMP_NUM_THREADS=%d && "%s"', threads, BIN_DIR .. "\\sbp_experiment.exe")
+			else -- Linux / macOS
+				cmd = "OMP_NUM_THREADS=" .. threads .. " " .. BIN_DIR .. "/sbp_experiment"
+			end
+
+			local result = os.execute(cmd)
         else
             print("ERROR: sbp_experiment not found. Build may have failed.")
             os.exit(1)
@@ -286,9 +362,17 @@ newaction {
     description = "Clean all build artifacts",
     execute = function()
         print("Cleaning build artifacts...")
-        os.execute("rm -rf " .. build_root)
-        os.execute("rm -rf " .. BIN_DIR)
-        os.execute("rm -f Makefile *.make")
+		
+		if os.host() == "windows" then
+			os.rmdir(build_root)
+			os.rmdir(BIN_DIR)
+			os.remove("Makefile")
+			os.remove("*.make")
+		else
+			os.execute("rm -rf " .. build_root)
+			os.execute("rm -rf " .. BIN_DIR)
+			os.execute("rm -f Makefile *.make")
+		end
         print("Clean complete!")
     end
 }
