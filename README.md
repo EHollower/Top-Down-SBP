@@ -1,3 +1,9 @@
+### TODO (Experiments):
+- (Experiments) (100, 500, 1000, 5000) (Small clusters vs Many clusters K <=20 vs K >=N / 2)
+- NMI, Runtime, MCMC Runtime, Max RSS (Sequential vs Parallelization).
+- One example of Real Synthetic Data + Real World Graph Data.
+- (Maybe) Tradeoff between Speed and Accuracy.
+
 # Top-Down SBP - Parallel Optimized Implementation
 
 Analysis and implementation of Top-Down Stochastic Block Partitioning (HPDC '25) with aggressive Bottom-Up parallelization. Scaling graph clustering by replacing bottom-up merges with block-splitting to achieve 7.7x speedup and 4.1x memory efficiency.
