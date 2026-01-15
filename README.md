@@ -151,7 +151,7 @@ OMP_NUM_THREADS=16 ./bin/sbp_experiment     # With 16 threads
 ```bash
 ./bin/sbp_benchmark standard parallel          # Parallel mode (default)
 ./bin/sbp_benchmark standard sequential        # Sequential mode
-./scripts/analyze_results.sh                   # Analyze results
+python3 scripts/analyze_results.py             # Analyze results
 ```
 
 ### 3. Comprehensive Benchmark Suite (NEW)
@@ -255,7 +255,8 @@ Threads      | Top-Down        | Bottom-Up       | Speedup
 
 ### Analyze Results
 ```bash
-./scripts/analyze_results.sh
+python3 scripts/generate_comprehensive_report.py
+python3 scripts/generate_beamer_plots.py
 ```
 
 **Output includes:**
@@ -311,8 +312,14 @@ cd IDE_project && make config=debug
 │   ├── main_sbp.cpp                # Quick demo executable
 │   └── benchmark_sbp.cpp           # Benchmark suite
 ├── scripts/
-│   ├── graph_config.csv            # Benchmark configurations
-│   └── analyze_results.sh          # Results analysis
+│   ├── graph_config.csv                # Benchmark configurations
+│   ├── generate_graphs.py              # Graph generation for benchmarks
+│   ├── run_extensive_benchmark.py      # Benchmark orchestration
+│   ├── generate_comprehensive_report.py # Analysis & reporting
+│   ├── generate_beamer_plots.py        # Plot generation
+│   ├── plot_benchmark_results.py       # Additional plotting utilities
+│   ├── analyze_results.py              # Results analysis
+│   └── benchmark.py                    # Benchmark utilities
 ├── bin/                            # Executables (generated)
 ├── results/                        # Benchmark results (generated)
 ├── IDE_project/                    # Build files (generated)
