@@ -1,7 +1,7 @@
 #ifndef GRAPH_GENERATION_HPP
 #define GRAPH_GENERATION_HPP
 
-#include "sbp_utils.hpp"
+#include "utils/sbp_utils.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -28,17 +28,17 @@ enum class GraphGenerationMethod {
 struct GraphConfigBase {
     int n, k;
 public:
-    virtual sbp::Graph generateGraph(std::vector<int>& true_assignment, int seed) = 0;
+    virtual sbp::utils::Graph generateGraph(std::vector<sbp::utils::ClusterId>& true_assignment, int seed) = 0;
+    virtual ~GraphConfigBase() = default;  // Add virtual destructor
 };
 
 struct GraphConfig : public GraphConfigBase {
     double p_in, p_out;
 
 public:
-    virtual sbp::Graph generateGraph(std::vector<int>& true_assignment, int seed) override {
-        sbp::Graph G;
-        G.num_vertices = n;
-        G.adj_list.resize(n);
+    virtual sbp::utils::Graph generateGraph(std::vector<sbp::utils::ClusterId>& true_assignment, int seed) override {
+        sbp::utils::Graph G;
+        G.adjacency_list.resize(n);
 
         true_assignment.resize(n);
         for (int i = 0; i < n; ++i) {
@@ -52,16 +52,15 @@ public:
             for (int j = i + 1; j < n; ++j) {
                 double p = (true_assignment[i] == true_assignment[j]) ? p_in : p_out;
                 if (dist(gen) < p) {
-                    G.adj_list[i].push_back(j);
-                    G.adj_list[j].push_back(i);
-                    G.num_edges++;
+                    G.adjacency_list[i].push_back(j);
+                    G.adjacency_list[j].push_back(i);
                 }
             }
         }
 
         // Validate graph
         for (int i = 0; i < n; ++i) {
-            for (int j : G.adj_list[i]) {
+            for (int j : G.adjacency_list[i]) {
                 if (j < 0 || j >= n) {
                     std::cerr << "ERROR: Graph validation failed! Vertex " << i
                         << " has edge to out-of-bounds vertex " << j
@@ -83,15 +82,14 @@ struct GraphConfigLFR : public GraphConfigBase {
     int min_comm_size;      // minimum community size
 
 public:
-    virtual sbp::Graph generateGraph(std::vector<int>& true_assignment, int seed) override {
+    virtual sbp::utils::Graph generateGraph(std::vector<sbp::utils::ClusterId>& true_assignment, int seed) override {
         int N = this->n;
         k = 0;
 
         std::mt19937 rng(seed);
 
-        sbp::Graph G;
-        G.num_vertices = N;
-        G.adj_list.resize(N);
+        sbp::utils::Graph G;
+        G.adjacency_list.resize(N);
 
         /* --------------------------------------------------
            1. Generate degree sequence (power law)
@@ -156,9 +154,8 @@ public:
                 int u = stubs[i];
                 int v = stubs[i + 1];
                 if (u != v) {
-                    G.adj_list[u].push_back(v);
-                    G.adj_list[v].push_back(u);
-                    G.num_edges++;
+                    G.adjacency_list[u].push_back(v);
+                    G.adjacency_list[v].push_back(u);
                 }
             }
         }
@@ -173,9 +170,8 @@ public:
             int v = external_stubs[i + 1];
 
             if (u != v && true_assignment[u] != true_assignment[v]) {
-                G.adj_list[u].push_back(v);
-                G.adj_list[v].push_back(u);
-                G.num_edges++;
+                G.adjacency_list[u].push_back(v);
+                G.adjacency_list[v].push_back(u);
             }
         }
 
@@ -308,6 +304,7 @@ std::vector<GraphConfigBase*> read_graph_configs_from_csv(const std::string& pat
     if (method == GraphGenerationMethod::LFR) {
         return read_lfr_graph_configs_from_csv(path);
     }
+    return {};  // Return empty vector if no method matches
 }
 
 void clear_configs(std::vector<GraphConfigBase*>& configs) {

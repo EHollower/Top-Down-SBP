@@ -75,8 +75,8 @@ project "sbp_experiment"
     common_settings()
 
     files {
-        "src/top_down_sbp.cpp",
-        "src/bottom_up_sbp.cpp",
+        "src/algorithms/top_down_sbp.cpp",
+        "src/algorithms/bottom_up_sbp.cpp",
         "src/main_sbp.cpp"
     }
 
@@ -88,8 +88,8 @@ project "sbp_benchmark"
     common_settings()
 
     files {
-        "src/top_down_sbp.cpp",
-        "src/bottom_up_sbp.cpp",
+        "src/algorithms/top_down_sbp.cpp",
+        "src/algorithms/bottom_up_sbp.cpp",
         "src/benchmark_sbp.cpp"
     }
 

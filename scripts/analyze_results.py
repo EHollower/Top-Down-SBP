@@ -28,7 +28,6 @@ def analyze_benchmark_csv(csv_file: str):
     print("  SBP Benchmark Results Summary")
     print("=========================================\n")
 
-    # === Average Runtime by Algorithm ===
     print("=== Average Runtime by Algorithm ===")
     runtime_by_alg = defaultdict(list)
     for r in rows:

@@ -1,4 +1,4 @@
-#include "headers/sbp_utils.hpp"
+#include "headers/utils/sbp_utils.hpp"
 #include "headers/graph_generation.hpp"
 
 #include <chrono>
@@ -9,9 +9,11 @@
 #include <iostream>
 #include <filesystem>
 
+using namespace sbp;
+
 namespace sbp {
-    void top_down_sbp(Graph&, Blockmodel&, int, int);
-    void bottom_up_sbp(Graph&, Blockmodel&, int);
+    void top_down_sbp(utils::Graph&, utils::BlockModel&, utils::ClusterCount, utils::ProposalCount);
+    void bottom_up_sbp(utils::Graph&, utils::BlockModel&, utils::ClusterCount);
 }
 
 struct BenchmarkResult {
@@ -32,23 +34,23 @@ struct BenchmarkResult {
 
 // Run single benchmark
 BenchmarkResult run_single_benchmark(
-    sbp::Graph& G, 
-    const std::vector<int>& true_labels,
+    utils::Graph& G, 
+    const std::vector<utils::ClusterId>& true_labels,
     int graph_id,
-    int target_k,
+    utils::ClusterCount target_k,
     const std::string& algorithm, 
     int run_num,
-    int proposals_per_split) 
+    utils::ProposalCount proposals_per_split) 
 {
     BenchmarkResult result;
     result.graph_id = graph_id;
-    result.num_vertices = G.num_vertices;
-    result.num_edges = G.num_edges;
+    result.num_vertices = G.get_vertex_count();
+    result.num_edges = G.get_edge_count();
     result.target_clusters = target_k;
     result.algorithm = algorithm;
     result.run_number = run_num;
     
-    sbp::Blockmodel bm;
+    utils::BlockModel bm;
     
     // Measure runtime
     auto start = std::chrono::high_resolution_clock::now();
@@ -64,11 +66,11 @@ BenchmarkResult run_single_benchmark(
     
     // Collect metrics
     result.runtime_seconds = elapsed.count();
-    result.memory_mb = sbp::get_peak_memory_mb();
-    result.nmi = sbp::calculate_nmi(true_labels, bm.assignment);
-    result.mdl_raw = sbp::compute_H(bm);
-    result.mdl_normalized = sbp::compute_H_normalized(bm);
-    result.clusters_found = bm.num_clusters;
+    result.memory_mb = utils::get_peak_memory_mb();
+    result.nmi = utils::calculate_nmi(true_labels, bm.cluster_assignment);
+    result.mdl_raw = utils::compute_H(bm);
+    result.mdl_normalized = utils::compute_H_normalized(bm);
+    result.clusters_found = bm.cluster_count;
     
     return result;
 }
@@ -150,10 +152,10 @@ int main(int argc, char* argv[]) {
             std::cout << "  Run " << (run + 1) << "/" << NUM_RUNS << "..." << std::flush;
             
             // Generate graph with unique seed per run
-            std::vector<int> true_labels;
+            std::vector<utils::ClusterId> true_labels;
             int seed = graph_id * 1000 + run;
 
-            sbp::Graph G = config->generateGraph(true_labels, seed);
+            utils::Graph G = config->generateGraph(true_labels, seed);
             
             // Run Top-Down
             auto td_result = run_single_benchmark(
