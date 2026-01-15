@@ -9,6 +9,7 @@
 
 #include <omp.h>
 #include <cmath>
+#include <chrono>
 
 #if defined(_WIN32)
     #ifndef NOMINMAX
@@ -332,6 +333,9 @@ inline void mcmc_refine(
         return;
     }
     
+    // Start timing MCMC refinement
+    auto mcmc_start = std::chrono::high_resolution_clock::now();
+    
     for (IterationCount iter = 0; iter < num_iterations; ++iter) {
         VertexId vertex = RandomNumerGenerator::random_int(
             0, static_cast<VertexId>(block_model.graph->get_vertex_count() - 1)
@@ -358,6 +362,11 @@ inline void mcmc_refine(
             block_model.move_vertex(vertex, old_cluster);
         }
     }
+    
+    // Stop timing and accumulate
+    auto mcmc_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> mcmc_duration = mcmc_end - mcmc_start;
+    block_model.total_mcmc_time += mcmc_duration.count();
 }
 
 // Compute H_null: description length with all vertices in one cluster

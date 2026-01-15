@@ -356,6 +356,284 @@ newoption {
     default = "16"
 }
 
+-- =========================================================
+-- Custom Actions for Extended Benchmark Suite
+-- =========================================================
+
+-- Action: generate-graphs - Generate synthetic graph configurations
+newaction {
+    trigger = "generate-graphs",
+    description = "Generate synthetic graph configurations for benchmarking",
+    execute = function()
+        print("\n" .. string.rep("=", 60))
+        print("Generating Graph Configurations")
+        print(string.rep("=", 60) .. "\n")
+        
+        if not file_exists("scripts/generate_graphs.py") then
+            print("ERROR: scripts/generate_graphs.py not found")
+            os.exit(1)
+        end
+        
+        -- Check for scenario option
+        local scenario = _OPTIONS["scenario"] or "all"
+        
+        local cmd = string.format('python3 scripts/generate_graphs.py --scenario %s', scenario)
+        local result = os.execute(cmd)
+        
+        if result == 0 or result == true then
+            print("\n" .. string.rep("=", 60))
+            print("Graph generation complete!")
+            print(string.rep("=", 60) .. "\n")
+        else
+            print("ERROR: Graph generation failed")
+            os.exit(1)
+        end
+    end
+}
+
+-- Action: benchmark-extensive - Run comprehensive benchmark suite
+newaction {
+    trigger = "benchmark-extensive",
+    description = "Run comprehensive benchmark suite (~48-70 minutes)",
+    execute = function()
+        print("\n" .. string.rep("=", 60))
+        print("Comprehensive Benchmark Suite")
+        print("Estimated runtime: 48-70 minutes")
+        print(string.rep("=", 60) .. "\n")
+        
+        -- Build project first unless --skip-compile is specified
+        if not _OPTIONS["skip-compile"] then
+            print("Building project...")
+            build_project_and_compile()
+            
+            if not executable_exists(BIN_DIR .. "/sbp_benchmark") then
+                print("ERROR: sbp_benchmark not found. Build may have failed.")
+                os.exit(1)
+            end
+        end
+        
+        -- Check if Python script exists
+        if not file_exists("scripts/run_extensive_benchmark.py") then
+            print("ERROR: scripts/run_extensive_benchmark.py not found")
+            os.exit(1)
+        end
+        
+        -- Create results directory
+        mkdir_p("results")
+        
+        -- Build command with optional flags
+        local cmd = "python3 scripts/run_extensive_benchmark.py"
+        
+        if _OPTIONS["skip-compile"] then
+            cmd = cmd .. " --skip-compile"
+        end
+        
+        if _OPTIONS["scenario"] then
+            cmd = cmd .. " --scenario " .. _OPTIONS["scenario"]
+        end
+        
+        if _OPTIONS["mode"] then
+            cmd = cmd .. " --mode " .. _OPTIONS["mode"]
+        end
+        
+        if _OPTIONS["append"] then
+            cmd = cmd .. " --append"
+        end
+        
+        print("Running: " .. cmd .. "\n")
+        local result = os.execute(cmd)
+        
+        if result == 0 or result == true then
+            print("\n" .. string.rep("=", 60))
+            print("Benchmark suite complete!")
+            print("Results saved to: results/benchmark_master.csv")
+            print(string.rep("=", 60) .. "\n")
+        else
+            print("ERROR: Benchmark execution failed")
+            os.exit(1)
+        end
+    end
+}
+
+-- Action: analyze-results - Generate plots from benchmark results
+newaction {
+    trigger = "analyze-results",
+    description = "Generate plots and analysis from benchmark results",
+    execute = function()
+        print("\n" .. string.rep("=", 60))
+        print("Analyzing Benchmark Results")
+        print(string.rep("=", 60) .. "\n")
+        
+        -- Check if Python script exists
+        if not file_exists("scripts/plot_benchmark_results.py") then
+            print("ERROR: scripts/plot_benchmark_results.py not found")
+            os.exit(1)
+        end
+        
+        -- Check if results file exists
+        local results_file = _OPTIONS["input"] or "results/benchmark_master.csv"
+        if not file_exists(results_file) then
+            print("ERROR: Results file not found: " .. results_file)
+            print("Run 'premake5 benchmark-extensive' first to generate results")
+            os.exit(1)
+        end
+        
+        -- Create plots directory
+        mkdir_p("results/plots")
+        
+        -- Build command
+        local cmd = "python3 scripts/plot_benchmark_results.py"
+        
+        if _OPTIONS["input"] then
+            cmd = cmd .. " --input " .. _OPTIONS["input"]
+        end
+        
+        if _OPTIONS["output-dir"] then
+            cmd = cmd .. " --output-dir " .. _OPTIONS["output-dir"]
+        end
+        
+        print("Running: " .. cmd .. "\n")
+        local result = os.execute(cmd)
+        
+        if result == 0 or result == true then
+            print("\n" .. string.rep("=", 60))
+            print("Analysis complete!")
+            print("Plots saved to: results/plots/")
+            print("Summary saved to: results/plots/summary_statistics.txt")
+            print(string.rep("=", 60) .. "\n")
+        else
+            print("ERROR: Analysis failed")
+            os.exit(1)
+        end
+    end
+}
+
+-- Action: generate-report - Generate comprehensive Markdown report
+newaction {
+    trigger = "generate-report",
+    description = "Generate comprehensive benchmark analysis report",
+    execute = function()
+        print("\n" .. string.rep("=", 60))
+        print("Generating Comprehensive Analysis Report")
+        print(string.rep("=", 60) .. "\n")
+        
+        local results_file = _OPTIONS["input"] or "results/benchmark_master.csv"
+        if not file_exists(results_file) then
+            print("ERROR: Results file not found: " .. results_file)
+            print("Run 'premake5 benchmark-extensive' first")
+            os.exit(1)
+        end
+        
+        local cmd = "python3 scripts/generate_comprehensive_report.py"
+        if _OPTIONS["input"] then
+            cmd = cmd .. " --input " .. _OPTIONS["input"]
+        end
+        if _OPTIONS["output"] then
+            cmd = cmd .. " --output " .. _OPTIONS["output"]
+        end
+        
+        print("Running: " .. cmd .. "\n")
+        local result = os.execute(cmd)
+        
+        if result == 0 or result == true then
+            print("\n" .. string.rep("=", 60))
+            print("Report generated: BENCHMARK_REPORT.md")
+            print(string.rep("=", 60) .. "\n")
+        else
+            print("ERROR: Report generation failed")
+            os.exit(1)
+        end
+    end
+}
+
+-- Action: generate-beamer-plots - Generate Beamer presentation plots
+newaction {
+    trigger = "generate-beamer-plots",
+    description = "Generate Beamer presentation-ready plots",
+    execute = function()
+        print("\n" .. string.rep("=", 60))
+        print("Generating Beamer-Ready Plots")
+        print(string.rep("=", 60) .. "\n")
+        
+        local results_file = _OPTIONS["input"] or "results/benchmark_master.csv"
+        if not file_exists(results_file) then
+            print("ERROR: Results file not found: " .. results_file)
+            print("Run 'premake5 benchmark-extensive' first")
+            os.exit(1)
+        end
+        
+        mkdir_p("results/plots")
+        
+        local cmd = "python3 scripts/generate_beamer_plots.py"
+        if _OPTIONS["input"] then
+            cmd = cmd .. " --input " .. _OPTIONS["input"]
+        end
+        if _OPTIONS["output-dir"] then
+            cmd = cmd .. " --output-dir " .. _OPTIONS["output-dir"]
+        end
+        
+        print("Running: " .. cmd .. "\n")
+        local result = os.execute(cmd)
+        
+        if result == 0 or result == true then
+            print("\n" .. string.rep("=", 60))
+            print("Beamer plots generated!")
+            print("Location: results/plots/")
+            print(string.rep("=", 60) .. "\n")
+        else
+            print("ERROR: Plot generation failed")
+            os.exit(1)
+        end
+    end
+}
+
+-- Add options for new actions
+newoption {
+    trigger = "scenario",
+    value = "NAME",
+    description = "Benchmark scenario (small_k, small_k_fast, many_k, many_k_fast, parallel_large, all)",
+    allowed = {
+        { "small_k", "Few clusters scenario (parallel mode)" },
+        { "small_k_fast", "Few clusters scenario (sequential mode, N<=1000)" },
+        { "many_k", "Many clusters scenario (parallel mode)" },
+        { "many_k_fast", "Many clusters scenario (sequential mode, N<=200)" },
+        { "parallel_large", "Large graphs (parallel only)" },
+        { "all", "All scenarios" }
+    }
+}
+
+newoption {
+    trigger = "mode",
+    value = "MODE",
+    description = "Execution mode (sequential, parallel)",
+    allowed = {
+        { "sequential", "Single-threaded execution" },
+        { "parallel", "Multi-threaded execution" }
+    }
+}
+
+newoption {
+    trigger = "skip-compile",
+    description = "Skip compilation step in benchmark-extensive"
+}
+
+newoption {
+    trigger = "append",
+    description = "Append results to existing benchmark_master.csv instead of overwriting"
+}
+
+newoption {
+    trigger = "input",
+    value = "FILE",
+    description = "Input CSV file for analysis (default: results/benchmark_master.csv)"
+}
+
+newoption {
+    trigger = "output-dir",
+    value = "DIR",
+    description = "Output directory for plots (default: results/plots)"
+}
+
 -- Action: clean - Clean all build artifacts
 newaction {
     trigger = "clean",

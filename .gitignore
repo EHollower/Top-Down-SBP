@@ -43,6 +43,7 @@ test_*.cpp
 .vscode/
 .idea/
 *.code-workspace
+.clangd
 
 # OS files
 .DS_Store
@@ -53,7 +54,7 @@ Thumbs.db
 
 # Personal notes and presentations (excluded)
 notes/
-beamer/
+# beamer/
 
 # Python cache
 __pycache__/

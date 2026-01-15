@@ -1,0 +1,1683 @@
+%Reference: https://hpdc.sci.utah.edu/2025/assets/slides/main_session/wayne.pdf
+
+% Top-Down SBP Presentation
+% Based on HPDC '25 paper
+\documentclass[aspectratio=43]{beamer}
+
+% Theme
+\usetheme{Warsaw}
+\usecolortheme{default}
+
+% Remove section navigation header
+\setbeamertemplate{headline}{}
+
+% Packages
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+
+% Code listing setup
+\lstset{
+    language=C++,
+    basicstyle=\tiny\ttfamily,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    frame=single,
+    tabsize=2,
+    captionpos=b,
+    breaklines=true,
+    breakatwhitespace=false,
+    escapeinside={(*@}{@*)},
+    morekeywords={pragma,omp,parallel,for,critical}
+}
+
+% Title information
+\title[Top-Down SBP]{Top-Down Stochastic Block Partitioning}
+\author{Presented by: Bucă Mihnea-Vicențiu, Luculescu Teodor}
+\institute{Programare Paralelă și Concurentă}
+\date{\today}
+
+% ToC styling
+\setbeamerfont{section in toc}{series=\bfseries}
+\setbeamerfont{section in toc shaded}{series=\mdseries}
+
+% ============================================================================
+% SECTION 1: MOTIVATION (~2 slides)
+% ============================================================================
+
+% ============================================================================
+% SECTION 2: CONTRIBUTIONS (~2 slides)
+% ============================================================================
+
+% ============================================================================
+% SECTION 3: Methods (~10 slides)
+% ============================================================================
+
+% ============================================================================
+% SECTION 4: Our Experiments (~3 slides)
+% ============================================================================
+
+% ============================================================================
+% SECTION 5: Comparisoin with paper experiments (~4 slides)
+% ============================================================================
+
+% ============================================================================
+% SECTION 6: Future Work (Slide in PPT)
+% ============================================================================
+
+% ============================================================================
+% SECTION 7: Conculusions
+% ============================================================================
+
+\begin{document}
+
+% ============================================================================
+% TITLE SLIDE
+% ============================================================================
+\begin{frame}
+    \titlepage
+    \vspace{-0.5cm}
+    \begin{center}
+        \small
+        \textbf{Paper:} Ammar, O., Wolfe, C., \& Chaudhari, P. (2025)\\
+        \textit{HPDC '25: 34th International Symposium on High-Performance\\Parallel and Distributed Computing}\\
+        \vspace{0.3cm}
+        \href{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}{\textcolor{blue}{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}}
+    \end{center}
+\end{frame}
+
+% ============================================================================
+% SECTION 1: MOTIVATION (2 slides)
+% ============================================================================
+
+\section{Motivation}
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+\begin{frame}{Why This Paper?}
+    \begin{block}{Personal Interest}
+        \begin{itemize}
+            \item Real-world applications everywhere:
+                \begin{itemize}
+                    \item Social networks (community detection)
+                    \item Web graphs (link analysis)
+                    \item Bioinformatics (protein interaction networks)
+                    \item Recommendation systems
+                \end{itemize}
+            \item The scalability challenge: modern graphs have \textbf{billions of edges}
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Why Important?}
+        \begin{itemize}
+            \item Graph clustering is \textbf{NP-hard} → need efficient heuristics
+            \item Trade-off: speed vs. accuracy vs. statistical rigor
+            \item This paper: architectural innovation for dramatic speedup
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{The Problem: Front-Loading in Bottom-Up SBP}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \textbf{Traditional Bottom-Up Approach}
+        \begin{itemize}
+            \item Starts with $V$ clusters (one per vertex)
+            \item \alert{Massive initial state:}
+                \begin{itemize}
+                    \item Search space: $V^V$ possibilities
+                    \item Memory: $O(V^2)$ blockmodel
+                    \item MCMC: prolonged mixing time
+                \end{itemize}
+            \item Most work happens at the \textbf{beginning}
+            \item \alert{Doesn't scale to large graphs!}
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \textbf{The Challenge}
+        \begin{itemize}
+            \item High-quality results on complex graphs
+            \item BUT: limited to small/medium graphs
+            \item Memory overhead prevents scaling
+            \item Irregular data access patterns
+            \item Difficult to parallelize MCMC early on
+        \end{itemize}
+        %\vspace{0.5cm}
+        \begin{alertblock}{Question}
+            Can we flip the approach to start small and grow?
+        \end{alertblock}
+    \end{columns}
+\end{frame}
+
+% ============================================================================
+% SECTION 2: CONTRIBUTIONS (3 slides)
+% ============================================================================
+
+\section{Contributions}
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+\begin{frame}{What Existed Before}
+    \begin{block}{Bottom-Up Methods (Agglomerative)}
+        \begin{itemize}
+            \item \textbf{Louvain, Leiden}: Fast, near-linear scalability
+                \begin{itemize}
+                    \item Based on modularity optimization
+                    \item Less robust on complex structures
+                \end{itemize}
+            \item \textbf{Bottom-Up SBP}: Statistical inference, high quality
+                \begin{itemize}
+                    \item \alert{Problem:} Terrible scalability (front-loading)
+                    \item Limited to thousands of vertices
+                \end{itemize}
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Divisive Methods (Top-Down)}
+        \begin{itemize}
+            \item \textbf{Girvan-Newman}: Iteratively remove high-betweenness edges
+                \begin{itemize}
+                    \item Computationally prohibitive: $O(n^2)$ per iteration
+                    \item Rarely used in practice
+                \end{itemize}
+            \item \alert{Gap:} No efficient divisive approach with statistical rigor
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Novel Contributions}
+    \begin{block}{1. Architectural Shift}
+        \begin{itemize}
+            \item Replace \textbf{bottom-up merges} with \textbf{top-down splits}
+            \item Start with 1 cluster → iteratively subdivide
+            \item Minimizes memory footprint and MCMC search space early
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{2. Efficient Splitting Heuristic}
+        \begin{itemize}
+            \item \textbf{Connectivity Snowball} with random initialization
+            \item Greedy assignment: maximize internal cluster strength
+            \item Avoids $O(n^2)$ overhead of traditional divisive methods
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{3. Maintains Statistical Rigor}
+        \begin{itemize}
+            \item Still minimizes \textbf{Minimum Description Length (MDL)}
+            \item MCMC optimization at each iteration
+            \item High-quality results on complex graphs
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Performance Highlights}
+    \begin{center}
+        \LARGE \textbf{Key Results}
+    \end{center}
+    
+    \vspace{0.5cm}
+    
+    \begin{columns}[T]
+        \column{0.33\textwidth}
+        \begin{block}{Sequential}
+            \centering
+            \LARGE \textbf{7.7×}\\
+            \normalsize speedup vs\\Bottom-Up
+        \end{block}
+        
+        \column{0.33\textwidth}
+        \begin{block}{Memory}
+            \centering
+            \LARGE \textbf{4.1×}\\
+            \normalsize reduction in\\memory usage
+        \end{block}
+        
+        \column{0.33\textwidth}
+        \begin{block}{Distributed}
+            \centering
+            \LARGE \textbf{403×}\\
+            \normalsize speedup\\(64 nodes)
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.7cm}
+    
+    \begin{alertblock}{Impact}
+        \centering
+        Enables processing of \textbf{significantly larger datasets} on standard hardware
+    \end{alertblock}
+\end{frame}
+
+
+% ============================================================================
+% SECTION 3: METHODS
+% ============================================================================
+
+\section{Methods}
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+% ============================================================================
+% SECTION 3.1: METHODS - BACKGROUND (4 slides)
+% ============================================================================
+\subsection{Background}
+
+\begin{frame}{Graph Clustering Basics}
+    \begin{block}{Goal: Community Detection}
+        Identify groups of vertices with \textbf{high intra-connectivity} and \textbf{low inter-connectivity}
+    \end{block}
+    
+    \vspace{0.1cm}
+    
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \small
+        \textbf{Agglomerative (Bottom-Up)}
+        \begin{itemize}
+            \setlength\itemsep{2pt}
+            \item Start: Each vertex = 1 cluster
+            \item Iteratively merge similar clusters
+            \item Example: Louvain, Leiden, Bottom-Up SBP
+            \item \textcolor{green!50!black}{Pro:} Natural for many graphs
+            \item \textcolor{red}{Con:} Large initial state
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \small
+        \textbf{Divisive (Top-Down)}
+        \begin{itemize}
+        \setlength\itemsep{2pt}
+            \item Start: All vertices = 1 cluster
+            \item Iteratively split clusters
+            \item Example: Girvan-Newman, Top-Down SBP
+            \item \textcolor{green!50!black}{Pro:} Small initial state
+            \item \textcolor{red}{Con:} Harder to get right
+        \end{itemize}
+    \end{columns}
+    
+    \vspace{0.15cm}
+    
+    \begin{alertblock}{Challenge}
+        Finding optimal partition is \textbf{NP-hard} → need good heuristics
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Stochastic Block Model (SBM)}
+    \begin{columns}[T]
+        \column{0.55\textwidth}
+        \begin{block}{Definition}
+            A \textbf{blockmodel} is a matrix $\mathbf{B}$ where:
+            \begin{itemize}
+                \item $B_{xy}$ = \# edges from cluster $x$ to cluster $y$
+                \item Captures graph structure at cluster level
+                \item Latent model describing graph generation
+            \end{itemize}
+        \end{block}
+        
+        %\vspace{0.3cm}
+        
+        \textbf{Example:}
+        \begin{itemize}
+            \item Graph with 4 communities
+            \item High values on diagonal (intra-cluster)
+            \item Low values off-diagonal (inter-cluster)
+        \end{itemize}
+        
+        \column{0.45\textwidth}
+        \begin{center}
+            \includegraphics[width=0.95\textwidth]{images/blockmodel_example.jpg}
+            
+            \small \textit{Blockmodel matrix visualization}
+        \end{center}
+    \end{columns}
+\end{frame}
+
+
+\begin{frame}{Minimum Description Length (MDL)}
+    \begin{block}{Objective Function}
+        $$H = -\ln P(B) - L(B|G)$$
+        \vspace{-0.7cm}
+        \begin{itemize}
+            \item $-\ln P(B)$: Description length of blockmodel \& clustering
+            \item $L(B|G)$: Log-likelihood of blockmodel given graph
+            \item \textbf{Goal:} Minimize $H$ (maximize compression)
+        \end{itemize}
+    \end{block}
+    
+    \vspace{0.3cm}
+    
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \textbf{Intuition}
+        \begin{itemize}
+            \item Good clustering = efficient encoding
+            \item Trade-off: model complexity vs. fit
+            \item Information-theoretic optimality
+        \end{itemize}
+        
+        \column{0.5\textwidth}
+        \textbf{Advantages over Modularity}
+        \begin{itemize}
+            \item Statistical inference framework
+            \item Identifies graphs without structure
+            \item More robust on complex graphs
+            \item Principled model selection
+        \end{itemize}
+    \end{columns}
+    
+    % \vspace{0.5cm}
+    
+    % \begin{alertblock}{SBP Algorithm}
+    %     Uses \textbf{Markov Chain Monte Carlo (MCMC)} to find clustering that minimizes $H$
+    % \end{alertblock}
+\end{frame}
+
+\begin{frame}{Stochastic block partitioning (SBP)}
+    \textbf{Approach}
+        \begin{itemize}
+            \item Find the optimal blockmodel that describes the graph's structure
+            \item Two phases:
+                \begin{itemize}
+                    \item model search phase - changes the number of clusters in the model\newline
+                    Blocks are merged together based on the resulting change in $H$. (Bottom-Up)
+                    \item model optimization phase - moves vertices between clusters\newline
+                    Uses \textbf{Markov Chain Monte Carlo (MCMC)} to find clustering that minimizes $H$.
+                \end{itemize}
+            \item Each global iteration of SBP runs both phases one after the other
+        \end{itemize}
+\end{frame}
+
+\begin{frame}{Bottom-Up SBP: The Scalability Challenge}
+    \begin{block}{Algorithm Overview}
+        \textbf{Initialization:} Start with $V$ clusters (one per vertex)\\
+        \textbf{Repeat until $K$ clusters:}
+        \begin{enumerate}
+            \item \textbf{Merge Phase:} Propose merging cluster pairs
+            \item Calculate $\Delta H$ for each merge
+            \item Select \& apply best merges (reduce $H$)
+            \item \textbf{MCMC Phase:} Refine by moving vertices between clusters
+        \end{enumerate}
+    \end{block}
+    
+    %\vspace{0.3cm}
+    
+    \begin{alertblock}{The Front-Loading Problem}
+        {\setlength{\leftmargini}{1em}
+        \begin{itemize}
+            \item \textbf{Iteration 1:} $V$ clusters → $V \times V$ blockmodel → massive memory
+            \item MCMC search space: $V^V$ possible assignments
+            \item Prolonged mixing time: many iterations to converge
+            \item \alert{Most expensive work happens at the very beginning!}
+            \item Limits scalability: can't process graphs with millions of vertices
+        \end{itemize}}
+    \end{alertblock}
+\end{frame}
+
+% ============================================================================
+% SECTION 3.2: TOP-DOWN SBP (6 slides)
+% ============================================================================
+
+\subsection{Top-Down SBP}
+
+\begin{frame}{The Key Architectural Shift}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \textbf{Bottom-Up: Starts Complex}
+        \begin{itemize}
+            \item Initialize: $V$ clusters
+            \item Blockmodel: $V \times V$
+            \item MCMC space: $V^V$
+            \item Memory: $O(V^2)$
+            \item \alert{Front-loaded complexity}
+        \end{itemize}
+        
+        % \vspace{0.5cm}
+        
+        \begin{center}
+            \tikz{
+                \node[draw, circle, fill=red!30] at (0,0) {$V$};
+                \node at (0,-0.5) {\scriptsize Clusters};
+                \draw[->, thick] (0.5,0) -- (1.5,0);
+                \node at (2,0) {$\cdots$};
+                \draw[->, thick] (2.5,0) -- (3.5,0);
+                \node[draw, circle, fill=green!30] at (4,0) {$K$};
+            }
+        \end{center}
+        
+        \column{0.5\textwidth}
+        \textbf{Top-Down: Starts Simple}
+        \begin{itemize}
+            \item Initialize: 1 cluster
+            \item Blockmodel: $1 \times 1$
+            \item MCMC space: minimal
+            \item Memory: $O(E)$ (just graph)
+            \item \textcolor{green!50!black}{Manageable early state}
+        \end{itemize}
+        
+        % \vspace{0.5cm}
+        
+        \begin{center}
+            \tikz{
+                \node[draw, circle, fill=green!30] at (0,0) {$1$};
+                \node at (0,-0.5) {\scriptsize Clusters};
+                \draw[->, thick] (0.5,0) -- (1.5,0);
+                \node at (2,0) {$\cdots$};
+                \draw[->, thick] (2.5,0) -- (3.5,0);
+                \node[draw, circle, fill=green!30] at (4,0) {$K$};
+            }
+        \end{center}
+    \end{columns}
+    
+    % \vspace{0.5cm}
+    
+    \begin{block}{Benefits}
+        \begin{itemize}
+            \item Smaller blockmodels in early iterations → faster MCMC convergence
+            \item Lower memory overhead → enables larger graphs
+            \item Reduced initial search space → faster iterations
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Conceptual differences between Top-Down ans Bottom-Up}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.9\textwidth]{images/high_level_diff_BU_TD.jpg}
+        % \caption{}
+    \end{figure}
+\end{frame}
+
+\begin{frame}[t]{Block Splitting Strategy}
+    \begin{block}{Algorithm Overview}
+        \textbf{Initialization:} Start with 1 cluster (all vertices)\\
+        \textbf{Repeat until $K$ clusters:}
+        \begin{enumerate}
+            \item \textbf{Extract} subgraph for each cluster
+            \item \textbf{Generate} multiple split proposals (using heuristic)
+            \item \textbf{Calculate} $\Delta H$ for each proposal
+            \item \textbf{Select} splits with most negative $\Delta H$ (best MDL improvement)
+            \item \textbf{Apply} selected splits to global blockmodel
+            \item \textbf{MCMC} refinement phase (move vertices between clusters)
+        \end{enumerate}
+    \end{block}
+\end{frame}
+    
+\begin{frame}[t]{Block Splitting Strategy}
+    \begin{block}{Key Insight}
+        Compare \textbf{local two-cluster configurations} against original single-cluster state:
+        \begin{itemize}
+            \item If $\Delta H < 0$ → split improves compression → good candidate
+            \item Multiple proposals per block → find best subdivision
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Splitting Methods: The Contestants}
+    \begin{enumerate}
+        \item \textbf{Random (Baseline)}
+        \begin{itemize}
+            \item Assign vertices to clusters by chance
+            \item Control to measure if complex methods help
+        \end{itemize}
+    
+        \vspace{0.2cm}
+    
+        \item \textbf{Snowball}
+        \begin{itemize}
+            \item Select 2 seed nodes, grow clusters by adding random neighbors
+            \item Based on topological locality
+        \end{itemize}
+    
+        \vspace{0.2cm}
+    
+        \item \textbf{Single Snowball}
+        \begin{itemize}
+            \item Focus on building one high-quality cluster first
+            \item Grow until size limit, assign remaining to second cluster
+        \end{itemize}
+    
+        \vspace{0.2cm}
+    
+        \item \textbf{Connectivity Snowball} (The Winner)
+        \begin{itemize}
+            \item \textcolor{green!50!black}{\textbf{Greedy approach:}} Assign each node to the cluster it is most strongly connected to (most edges)
+            \item Actively maximizes "internal strength"
+            \item Produces most accurate results
+        \end{itemize}
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{Splitting Methods Comparison}
+    \begin{center}
+        \includegraphics[width=0.6\textwidth]{images/splitting_methods_comparison.jpg}
+        
+        \vspace{0.1cm}
+        
+        \small \textit{Different splitting heuristics tested on various graph structures}
+    \end{center}
+\end{frame}
+
+\begin{frame}[fragile]{Connectivity Snowball Algorithm}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \textbf{Algorithm Steps:}
+        \begin{enumerate}
+            \itemsep=0pt
+            \item Pick 2 \textbf{random seed} vertices
+            \item Initialize: seed1 → cluster 0, seed2 → cluster 1
+            \item For each unassigned vertex $v$:
+                \begin{itemize}
+                    \item Count edges to cluster 0: $score_0$
+                    \item Count edges to cluster 1: $score_1$
+                    \item Assign $v$ to cluster with higher score
+                    \item (Break ties randomly)
+                \end{itemize}
+            \item Return 2-cluster assignment
+        \end{enumerate}
+        
+        \column{0.5\textwidth}
+        \textbf{Initialization Methods:}
+        \begin{itemize}
+            \item \textbf{Random:} Uniform selection
+                \begin{itemize}
+                    \item Exploration
+                    \item Avoids local optima
+                \end{itemize}
+            \item \textbf{High-degree:} Pick hubs
+                \begin{itemize}
+                    \item Exploitation
+                    \item Fast convergence
+                \end{itemize}
+            \item \textbf{Degree-weighted:} Middle ground
+        \end{itemize}
+        
+        \vspace{0.5cm}
+        
+        \begin{alertblock}{Winner}
+            \textbf{Connectivity Snowball}\\
+            + \textbf{Random Init}
+        \end{alertblock}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \textbf{Why This Works:} Connectivity logic ensures topologically sound clusters, while random seeds prevent getting stuck in local optima
+\end{frame}
+
+% \begin{frame}{Algorithm Comparison: Bottom-Up vs Top-Down}
+%     \begin{center}
+%         \includegraphics[width=0.85\textwidth]{images/Screenshot from 2026-01-06 19-03-59.png}
+        
+%         \vspace{0.3cm}
+        
+%         \small \textit{Two phases in both algorithms: vertex-level (MCMC) and block-level (merge/split)}
+%     \end{center}
+% \end{frame}
+
+% ============================================================================
+% SECTION 3.3: ACCELERATION (4 slides) ??
+% ============================================================================
+
+\subsection{Acceleration Techniques}
+
+\begin{frame}[t]{Parallelization with OpenMP}
+    \begin{block}{Vertex-Level Phase (MCMC)}
+        \begin{itemize}
+            \itemsep=8pt
+            \item The same as in Bottom-Up SBP
+            \item \textbf{Hybrid approach:} Reserve subset for sequential processing
+            \item \textbf{Asynchronous Gibbs sampling} for majority of vertices
+            \item Minimizes race conditions while maximizing parallelism
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}[t]{Parallelization with OpenMP}
+    \begin{block}{Block-Level Phase (Splitting)}
+        \textbf{Challenge:} Early iterations have very few blocks → CPU under-utilization
+        
+        \vspace{0.3cm}
+        
+        \textbf{Solution:} Parallelize at \textbf{proposal level} instead of block level
+        \begin{itemize}
+            \item Use OpenMP \texttt{collapse} clause
+            \item Multiple proposals per block → finer-grained parallelism
+            \item Improves core utilization and load balancing
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Memory Optimization}
+        \textbf{Pre-extract subgraphs} for each block once
+        \begin{itemize}
+            \item Threads working on same block share subgraph data structure
+            \item Avoids $x$ copies of entire graph (where $x$ = \# proposals)
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}[t]{Distributed Computing with MPI}
+    \begin{block}{EDiSt Framework Adaptation}
+        \begin{itemize}
+            \item Duplicate graph \& blockmodel across each MPI rank
+            \item Vertex degree-based load balancing
+            \item All-to-all communication for synchronization
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{MCMC Phase Communication}
+        \begin{itemize}
+            \item Same as Bottom-Up approach
+            \item After each batch: MPI all-to-all synchronizes moves across ranks
+            \item Local blockmodels updated independently using accepted moves from all ranks
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}[t]{Distributed Computing with MPI}
+    \begin{block}{Block-Split Phase Communication}
+        \textbf{Different from Bottom-Up:} Need to communicate vertex movements
+        
+        \vspace{0.2cm}
+        
+        Communicate two vectors:
+        \begin{enumerate}
+            \item Vector of $\Delta H$ values for best splits per block
+            \item Binary vector $Y$: 0 = vertex stayed, 1 = vertex moved to new cluster
+        \end{enumerate}
+        
+        \vspace{0.2cm}
+        
+        After sync: Pre-compute new block IDs, update assignments, rebuild blockmodel
+    \end{block}
+\end{frame}
+
+\begin{frame}[t]{Sampling \& Limitations}
+    \begin{block}{Sampling with SamBaS Framework}
+        \textbf{Purpose:} Data reduction for low-memory/distributed systems
+        \begin{itemize}
+        \itemsep=0pt
+            \item Sample subset of graph
+            \item Run SBP on sample
+            \item Fine-tune results on full graph
+            \item Minimal accuracy loss with significant speedup
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}[t]{Sampling \& Limitations}
+    \begin{alertblock}{Limitations of Top-Down Approach}
+        \begin{enumerate}
+        \itemsep=0pt
+            \item \textbf{When \# clusters → \# vertices:}
+                \begin{itemize}
+                    \item Top-Down requires more iterations
+                    \item Split proposals more expensive than merge proposals (subgraph extraction)
+                \end{itemize}
+            \item \textbf{Parallelization benefits:}
+                \begin{itemize}
+                    \item Reduced overall MCMC work may highlight inefficiencies
+                    \item All-to-all MPI communication overhead
+                    \item Sampling overhead (SamBaS framework)
+                \end{itemize}
+            \item \textbf{Best use case:} Moderate number of large clusters
+        \end{enumerate}
+    \end{alertblock}
+\end{frame}
+
+% ============================================================================
+% SECTION 4: Our experiments (1 slide) 
+% ============================================================================
+
+\section{Our Experiments}
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+% ============================================================================
+% SECTION 4: OUR EXPERIMENTS (5-6 slides)
+% ============================================================================
+
+\begin{frame}{Experimental Setup}
+    \begin{block}{Hardware Configuration}
+        \begin{itemize}
+            \item \textbf{CPU:} AMD Ryzen 9 7845HX (12 cores, 24 threads)
+            \item \textbf{RAM:} 64GB DDR5
+            \item \textbf{Compiler:} GCC 14.2 with -O3 -march=native
+            \item \textbf{OS:} Ubuntu 24.04 LTS
+            \item \textbf{Parallelization:} OpenMP 5.0
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Dataset: Synthetic Stochastic Block Model Graphs}
+        \begin{itemize}
+            \item \textbf{Graph sizes:} N = 100, 200, 500, 1K, 2.5K, 5K, 8K vertices
+            \item \textbf{Cluster counts:} K = 5, 10, 15, 25, 30, 50, 75, 100 clusters
+            \item \textbf{Parameters:} $p_{in} = 0.3$--$0.4$, $p_{out} = 0.05$--$0.08$
+            \item \textbf{Scenarios:}
+                \begin{itemize}
+                    \item \textbf{Few clusters} (K $\leq$ 20): Favorable to Top-Down
+                    \item \textbf{Many clusters} (K $\geq$ N/2): Favorable to Bottom-Up
+                \end{itemize}
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Experimental Design}
+        \begin{itemize}
+            \item \textbf{Total runs:} 140 benchmark executions
+            \item \textbf{Modes:} Sequential (1 thread) and Parallel (24 threads)
+            \item \textbf{Metrics:} Runtime, NMI accuracy, Memory, MCMC time
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Sequential Mode: Algorithm Comparison}
+    \begin{center}
+        \includegraphics[width=0.75\textwidth]{images/sequential_runtime.png}
+    \end{center}
+    
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Few Clusters (K $\leq$ 20)}
+            \small
+            \begin{itemize}
+                \item N=500: \textbf{13× faster}
+                \item N=1000: \textbf{16.6× faster}
+                \item NMI: 0.99 vs 0.36
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Many Clusters (K $\geq$ N/2)}
+            \small
+            \begin{itemize}
+                \item N=200, K=75: BU \textbf{24× faster}
+                \item NMI: comparable (0.77-0.78)
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Sequential Mode: Accuracy Comparison}
+    \begin{center}
+        \includegraphics[width=0.75\textwidth]{images/sequential_nmi.png}
+    \end{center}
+    
+    \begin{block}{Accuracy Insights}
+        \small
+        \begin{itemize}
+            \item \textbf{Top-Down:} NMI = 0.87-0.99 (excellent for K $\leq$ 20)
+            \item \textbf{Bottom-Up:} NMI = 0.05-0.78 (struggles with few clusters)
+            \item \textbf{Crossover:} K $\approx$ N/2 where algorithms perform similarly
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Parallel Mode: Performance Scaling}
+    \begin{center}
+        \includegraphics[width=0.75\textwidth]{images/parallel_runtime.png}
+    \end{center}
+    
+    \begin{block}{Parallel Results (24 threads)}
+        \small
+        \begin{itemize}
+            \item \textbf{Bottom-Up:} 2.5× speedup at N=1000 (3.36s → 1.34s)
+            \item \textbf{Top-Down:} Minimal benefit (overhead dominates)
+            \item Larger graphs needed for Top-Down parallel gains
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Parallelization Analysis}
+    \begin{center}
+        \includegraphics[width=0.7\textwidth]{images/speedup_comparison.png}
+    \end{center}
+    
+    \begin{block}{Why Limited Speedup?}
+        \small
+        \begin{itemize}
+            \item MCMC is inherently sequential (Markov chain)
+            \item Small graphs: overhead $>$ parallel benefit
+            \item Bottom-Up scales better (more parallelizable work)
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Memory \& MCMC Analysis}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=0.95\textwidth]{images/memory_vs_size.png}
+            
+            {\small Memory Usage}
+        \end{center}
+        
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=0.95\textwidth]{images/mcmc_runtime_vs_size.png}
+            
+            {\small MCMC Runtime}
+        \end{center}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{block}{Key Observations}
+        \small
+        \begin{itemize}
+            \item MCMC: 45-50\% (BU) to 80-90\% (TD) of total runtime
+            \item Bottleneck for parallelization (sequential nature)
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Key Findings: Many Clusters (K $\geq$ N/2)}
+        \begin{itemize}
+            \item \textbf{N=200, K=75:} Bottom-Up \textbf{24.2× faster} (0.06s vs 1.41s)
+            \item \textbf{Quality:} Bottom-Up NMI = 0.78 vs Top-Down NMI = 0.77 (comparable)
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Sequential Mode: Accuracy Comparison}
+    \begin{center}
+        \includegraphics[width=0.85\textwidth]{images/sequential_nmi.png}
+    \end{center}
+    
+    \vspace{-0.3cm}
+    
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \begin{block}{Top-Down Accuracy}
+            \begin{itemize}
+                \item \textbf{N=500:} NMI = \textbf{0.992}
+                \item \textbf{N=1000:} NMI = \textbf{0.997}
+                \item Consistently high accuracy for few-cluster scenarios
+            \end{itemize}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{block}{Bottom-Up Accuracy}
+            \begin{itemize}
+                \item \textbf{N=1000:} NMI = 0.355 (struggles with few K)
+                \item \textbf{N=200, K=75:} NMI = 0.775 (good with many K)
+                \item Context-dependent performance
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{center}
+        \alert{\textbf{Insight:}} Top-Down excels at finding few, well-defined clusters\\
+        Bottom-Up better suited for many small clusters
+    \end{center}
+\end{frame}
+
+\begin{frame}{Parallel Mode: Performance Scaling}
+    \begin{center}
+        \includegraphics[width=0.85\textwidth]{images/parallel_runtime.png}
+    \end{center}
+    
+    \vspace{-0.3cm}
+    
+    \begin{block}{Large-Scale Performance (N $\geq$ 1000)}
+        \begin{itemize}
+            \item \textbf{N=1000, K=15:} Top-Down 6.3× faster (0.21s vs 1.34s)
+            \item \textbf{N=2500, K=30:} Top-Down 5.3× faster (2.54s vs 13.44s)
+            \item \textbf{N=5000, K=50:} Top-Down 4.2× faster (20.8s vs 87.4s)
+            \item \textbf{N=8000, K=25:} Top-Down \textbf{52.0× faster} (8.0s vs 416.9s)
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Parallelization Effectiveness}
+        \begin{itemize}
+            \item \textbf{Bottom-Up:} 2.5× speedup at N=1000 (3.36s → 1.34s)
+            \item \textbf{Top-Down:} Parallel overhead for small N, minimal gain
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Parallelization Analysis: Speedup vs Overhead}
+    \begin{center}
+        \includegraphics[width=0.75\textwidth]{images/speedup_comparison.png}
+    \end{center}
+    
+    \vspace{-0.2cm}
+    
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \begin{block}{Bottom-Up Parallelization}
+            \begin{itemize}
+                \item \textbf{N=500:} 1.82× speedup $\checkmark$
+                \item \textbf{N=1000:} \textbf{2.52× speedup} $\checkmark$
+                \item Parallel merge proposals scale well
+            \end{itemize}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{block}{Top-Down Parallelization}
+            \begin{itemize}
+                \item \textbf{Small N:} Overhead dominates $\times$
+                \item Already so fast that parallel coordination costs outweigh benefits
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{alertblock}{Key Insight}
+        Parallelization helps when there's \textbf{enough work to amortize overhead}.\\
+        Top-Down is already extremely fast for few clusters!
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Memory \& MCMC Analysis}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \begin{center}
+            \includegraphics[width=0.95\textwidth]{images/memory_vs_size.png}
+            
+            \vspace{0.2cm}
+            
+            \small \textbf{Memory Usage Scaling}
+        \end{center}
+        
+        \begin{block}{Memory Efficiency}
+            \begin{itemize}
+                \item Both algorithms: O(N + K²) memory
+                \item \textbf{N=8000:} Top-Down 479MB, Bottom-Up 546MB
+                \item Difference: 12-23\% (not significant)
+            \end{itemize}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{center}
+            \includegraphics[width=0.95\textwidth]{images/mcmc_runtime_vs_size.png}
+            
+            \vspace{0.2cm}
+            
+            \small \textbf{MCMC Refinement Time}
+        \end{center}
+        
+        \begin{block}{MCMC Overhead}
+            \begin{itemize}
+                \item Bottom-Up: 45-50\% of runtime
+                \item Top-Down: 80-90\% of runtime
+                \item \alert{MCMC is inherently sequential!}
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Summary: Our Experimental Results}
+    \begin{block}{Top-Down SBP Performance}
+        \begin{itemize}
+            \item \textbf{Speed:} 6-52× faster than Bottom-Up for few clusters (K $\leq$ 20)
+            \item \textbf{Accuracy:} NMI = 0.99 on N=1000, K=15 (near-perfect clustering)
+            \item \textbf{Scalability:} Handles N=8000 in 8 seconds (parallel mode)
+            \item \textbf{Parallelization:} Limited benefit (already too fast!)
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{Bottom-Up SBP Performance}
+        \begin{itemize}
+            \item \textbf{Speed:} 24× faster for many clusters (N=200, K=75)
+            \item \textbf{Accuracy:} NMI = 0.78 for many clusters, struggles with few K
+            \item \textbf{Parallelization:} \textbf{2.5× speedup} at N=1000 (our optimization!)
+            \item \textbf{Scalability:} Slower for large N with few K (417s at N=8000)
+        \end{itemize}
+    \end{block}
+    
+    \vspace{0.3cm}
+    
+    \begin{center}
+        \Large
+        \textbf{Recommendation:} Use Top-Down for \alert{few clusters},\\
+        Bottom-Up for \alert{many clusters}
+    \end{center}
+\end{frame}
+
+% ============================================================================
+% SECTION 5: COMPARISON WITH PAPER EXPERIMENTS
+% ============================================================================
+
+\section{Comparison with Paper Results}
+
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+\begin{frame}{Paper vs Our Results: Different Scales}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \begin{block}{Paper's Experiments}
+            \begin{itemize}
+                \item \textbf{Scale:} N = 200--88K vertices
+                \item \textbf{Hardware:} 64-node cluster
+                \item \textbf{Focus:} Distributed scaling
+                \item \textbf{Baseline:} Bottom-Up (parallel)
+                \item \textbf{Key Result:} 403× speedup on 64 nodes
+            \end{itemize}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{block}{Our Experiments}
+            \begin{itemize}
+                \item \textbf{Scale:} N = 100--8K vertices
+                \item \textbf{Hardware:} Single machine (24 threads)
+                \item \textbf{Focus:} Algorithm comparison
+                \item \textbf{Algorithms:} Top-Down vs Bottom-Up
+                \item \textbf{Key Result:} 52× speedup at N=8K
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.5cm}
+    
+    \begin{alertblock}{Complementary Approaches}
+        \textbf{Paper:} Validates Top-Down on massive graphs (distributed setting)\\
+        \textbf{Our work:} Quantifies algorithm trade-offs (shared memory setting)
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Performance Comparison: Sequential Mode}
+    \begin{columns}[T]
+        \column{0.5\textwidth}
+        \begin{block}{Paper's Sequential Results}
+            \begin{center}
+                \begin{tabular}{ccc}
+                    \toprule
+                    \textbf{N} & \textbf{Runtime} & \textbf{Speedup} \\
+                    \midrule
+                    200 & 0.032s & 30.5× \\
+                    400 & 0.050s & 189.9× \\
+                    800 & 0.072s & 1228.3× \\
+                    \bottomrule
+                \end{tabular}
+            \end{center}
+            \vspace{0.1cm}
+            {\small vs Metropolized Gibbs initialization}
+        \end{block}
+        
+        \column{0.5\textwidth}
+        \begin{block}{Our Sequential Results}
+            \begin{center}
+                \begin{tabular}{ccc}
+                    \toprule
+                    \textbf{N} & \textbf{Runtime} & \textbf{Speedup} \\
+                    \midrule
+                    500 & 0.039s & 13.0× \\
+                    1000 & 0.203s & 16.6× \\
+                    \alert{8000} & \alert{NA} & \alert{52.0×} \\
+                    \bottomrule
+                \end{tabular}
+            \end{center}
+            \vspace{0.1cm}
+            {\small vs Bottom-Up (K $\leq$ 20)}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{alertblock}{Agreement}
+        Both show \textbf{dramatic speedups} for Top-Down initialization!\\
+        Our results: Extended to N=8K, confirmed for shared memory
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Performance Comparison: Parallel Scaling}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Paper's Distributed}
+            \small
+            \begin{itemize}
+                \item \textbf{64 nodes:} 403× speedup
+                \item Near-linear strong scaling
+                \item 4.1× memory reduction
+                \item Enables billion-edge graphs
+                \item Strategy: Distributed MPI
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Our OpenMP}
+            \small
+            \begin{itemize}
+                \item BU: 2.5× speedup (24 threads)
+                \item TD: Overhead dominates
+                \item Strategy: Shared memory
+                \item Different approach, smaller scale
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{center}
+        \includegraphics[width=0.65\textwidth]{images/speedup_comparison.png}
+    \end{center}
+\end{frame}
+
+\begin{frame}{Accuracy Comparison: NMI Results}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Paper's Accuracy}
+            \small
+            \begin{itemize}
+                \item TD NMI $\approx$ 0.90-0.95
+                \item Competitive with BU
+                \item Graph Challenge datasets
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Our Results}
+            \small
+            \begin{itemize}
+                \item TD: 0.87-0.99
+                \item BU: 0.05-0.77
+                \item SBM synthetic graphs
+            \end{itemize}
+        \end{block}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{center}
+        \includegraphics[width=0.65\textwidth]{images/parallel_nmi.png}
+    \end{center}
+    
+    \begin{center}
+        \small
+        \alert{\textbf{Validation:}} Our results confirm paper's accuracy!
+    \end{center}
+\end{frame}
+
+\begin{frame}{Key Insights: What We Learned}
+    \begin{block}{Confirmed from Paper}
+        \small
+        \begin{itemize}
+            \item $\checkmark$ Top-Down: orders of magnitude faster
+            \item $\checkmark$ High accuracy maintained (NMI $\approx$ 0.9+)
+            \item $\checkmark$ Scales from N=200 to N=88K
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{New Discoveries}
+        \small
+        \begin{itemize}
+            \item Context matters: BU wins for many clusters (K $\geq$ N/2)
+            \item Parallelization: BU better (2.5× vs 1.0×)
+            \item MCMC bottleneck: 45-90\% runtime, sequential
+        \end{itemize}
+    \end{block}
+    
+    \begin{center}
+        \textbf{Our contribution:} Quantified trade-offs on shared memory
+    \end{center}
+\end{frame}
+
+% ============================================================================
+% SECTION 6: KEY OBSERVATIONS
+% ============================================================================
+\section{Key Observations}
+
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+\begin{frame}{Observation 1: Algorithm Choice Matters}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=\textwidth]{images/sequential_runtime.png}
+        \end{center}
+        
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=\textwidth]{images/sequential_nmi.png}
+        \end{center}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{block}{Findings}
+        \small
+        \begin{itemize}
+            \item TD: 16-52× faster (K $\leq$ 20), NMI = 0.99
+            \item BU: 24× faster (K $\geq$ N/2), NMI = 0.78
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Observation 2: Parallelization is Context-Dependent}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=\textwidth]{images/parallel_runtime.png}
+        \end{center}
+        
+        \column{0.48\textwidth}
+        \begin{center}
+            \includegraphics[width=\textwidth]{images/speedup_comparison.png}
+        \end{center}
+    \end{columns}
+    
+    \vspace{0.3cm}
+    
+    \begin{block}{Findings}
+        \small
+        \begin{itemize}
+            \item BU: 2.5× speedup (24 threads, N=1000)
+            \item TD: Minimal benefit (overhead dominates)
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Observation 3: MCMC is the Bottleneck}
+    \begin{center}
+        \includegraphics[width=0.7\textwidth]{images/mcmc_runtime_vs_size.png}
+    \end{center}
+    
+    \begin{block}{Findings}
+        \small
+        \begin{itemize}
+            \item BU: 45-50\% MCMC runtime
+            \item TD: 80-90\% MCMC runtime
+            \item Sequential nature limits parallelization
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Observation 4: Paper Results Validated}
+    \begin{block}{What We Confirmed}
+        \small
+        \begin{itemize}
+            \item $\checkmark$ Speed: 6-52× faster for few clusters
+            \item $\checkmark$ Accuracy: NMI = 0.87-0.99
+            \item $\checkmark$ Scalability: N=8K in 8 seconds
+        \end{itemize}
+    \end{block}
+    
+    \begin{alertblock}{Additional Insight}
+        BU wins for many clusters (K $\geq$ N/2)
+    \end{alertblock}
+\end{frame}
+
+% ============================================================================
+% SECTION 7: FUTURE WORK (from paper)
+% ============================================================================
+\section{Future Work}
+
+\begin{frame}{Outline}
+    \tableofcontents[currentsection, subsectionstyle=hide]
+\end{frame}
+
+\begin{frame}{Future Directions (from Paper)}
+    \begin{block}{1. Hybrid Approaches}
+        \small
+        \begin{itemize}
+            \item Combine Top-Down and Bottom-Up strengths
+            \item Adaptive algorithm selection based on graph
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{2. GPU Acceleration}
+        \small
+        \begin{itemize}
+            \item Massively parallel merge proposals
+            \item Potential 10-100× speedup
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{3. Dynamic Graphs}
+        \small
+        \begin{itemize}
+            \item Incremental updates as edges change
+            \item Applications: Social networks, streaming data
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Future Directions (Our Ideas)}
+    \begin{block}{4. Alternative MCMC Strategies}
+        \small
+        \begin{itemize}
+            \item MCMC is 45-90\% of runtime (bottleneck!)
+            \item Delta-H incremental updates
+            \item Adaptive iteration counts
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{5. Real-World Graph Testing}
+        \small
+        \begin{itemize}
+            \item Social networks (Facebook, Twitter)
+            \item Citation networks, protein interactions
+        \end{itemize}
+    \end{block}
+    
+    \begin{block}{6. Distributed Memory (MPI)}
+        \small
+        \begin{itemize}
+            \item Paper: 403× speedup on 64 nodes
+            \item Ours: 2.5× (single-node OpenMP)
+            \item Hybrid MPI+OpenMP opportunity
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+% ============================================================================
+% SECTION 8: PAPER'S EXPERIMENTAL RESULTS
+% ============================================================================
+
+\section{Paper's Experiments}
+
+\begin{frame}{Experimental Setup}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Datasets}
+            \small
+            \textbf{Synthetic (Graph Challenge):}
+            \begin{itemize}
+                \item 1K to 1M vertices
+                \item High inter-block connectivity
+                \item Ground truth available
+            \end{itemize}
+            
+            \vspace{0.2cm}
+            
+            \textbf{Real-World (SuiteSparse):}
+            \begin{itemize}
+                \item cit-HepPh, wikipedia, citPatents
+                \item Up to 3.5M vertices, 45M edges
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Hardware \& Metrics}
+            \small
+            \textbf{System:}
+            \begin{itemize}
+                \item Ookami cluster (A64FX)
+                \item 48 cores/node, 32GB HBM
+                \item Up to 64 nodes (6,144 cores)
+            \end{itemize}
+            
+            \vspace{0.2cm}
+            
+            \textbf{Metrics:}
+            \begin{itemize}
+                \item NMI (synthetic)
+                \item Normalized description length
+                \item Runtime, Memory, Scalability
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Sequential Results: Synthetic Graphs}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Key Findings}
+            \small
+            \begin{itemize}
+                \item \textbf{7.7× faster} (200K vertices)
+                \item \textbf{4.1× less memory}
+                \item Similar accuracy (NMI $\approx$ 0.9)
+                \item 1M graph: TD succeeds, BU OOM
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Why Faster?}
+            \small
+            \begin{itemize}
+                \item 6.1× less model optimization
+                \item 13.8× fewer MCMC moves
+                \item Smaller blockmodels early on
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Runtime Breakdown}
+            \small
+            \begin{itemize}
+                \item \textbf{TD:} 80-90\% model optimization
+                \item \textbf{BU:} 70-80\% model optimization
+                \item Model search: higher \% in TD
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Convergence}
+            \small
+            \begin{itemize}
+                \item Similar iterations to converge
+                \item TD starts better ($H_{norm}=1.0$)
+                \item BU starts worse than random
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Parallel Results: 48 Cores}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Performance}
+            \small
+            \begin{itemize}
+                \item \textbf{4.9× faster} than parallel BU
+                \item Processes larger graphs
+                \item Similar accuracy maintained
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Challenges}
+            \small
+            \begin{itemize}
+                \item Poor strong scaling (both)
+                \item $<$50\% efficiency at 48 cores
+                \item TD: load imbalance early
+                \item BU: better core utilization
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Bottlenecks}
+            \small
+            \begin{itemize}
+                \item Sequential blockmodel updates
+                \item Processor group layout
+                \item Asynchronous Gibbs overhead
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Notable Result}
+            \small
+            1M graph (TD, 48 cores):
+            \begin{itemize}
+                \item 20 min runtime
+                \item 1.67× slower than BU baseline
+                \item But uses 170× fewer cores!
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Distributed Results: Up to 64 Nodes}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{4-Node Results}
+            \small
+            \begin{itemize}
+                \item \textbf{6.9× faster} than distributed BU
+                \item $<$2× speedup over 1-node
+                \item $<$50\% distributed efficiency
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Communication}
+            \small
+            TD: More data, less frequent
+            \begin{itemize}
+                \item Block splits: once/iteration
+                \item 208 AllReduce calls (200K graph)
+            \end{itemize}
+            
+            BU: Less data, more frequent
+            \begin{itemize}
+                \item Model opt: many/iteration
+                \item 3,184 AllGather calls
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{64-Node Scaling}
+            \small
+            \begin{itemize}
+                \item Single-digit efficiency
+                \item Load imbalance dominates
+                \item \textbf{403× speedup} (eu-2005)
+                \item \textbf{321× speedup} (citPatents)
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Key Insight}
+            \small
+            Most time-consuming collective $\neq$ most data:
+            \begin{itemize}
+                \item BU: AllGather 90\% time, 0.02\% data
+                \item TD: AllReduce 79\% time, 0.07\% data
+            \end{itemize}
+            $\Rightarrow$ Load balance matters most
+        \end{block}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Real-World Graphs: Key Results}
+    \begin{columns}[T]
+        \column{0.48\textwidth}
+        \begin{block}{Performance}
+            \small
+            \begin{itemize}
+                \item \textbf{13.2× faster} than BU (max)
+                \item wiki-topcats: TD succeeds, BU OOM
+                \item Trends match synthetic graphs
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Weak Scaling (Poor)}
+            \small
+            16 nodes efficiency:
+            \begin{itemize}
+                \item BU: 1.3\% (no sampling)
+                \item TD: 3.7\% (no sampling)
+                \item Superlinear $O(E \log^2 E)$
+                \item MPI overhead compounds
+            \end{itemize}
+        \end{block}
+        
+        \column{0.48\textwidth}
+        \begin{block}{Sampling Results}
+            \small
+            \begin{itemize}
+                \item 50\% sample size
+                \item \textbf{4× speedup} TD vs BU
+                \item Lower than 6.9× without sampling
+                \item TD: higher overhead (finetuning)
+            \end{itemize}
+        \end{block}
+        
+        \begin{block}{Cluster Count}
+            \small
+            \begin{itemize}
+                \item TD: tends to overestimate
+                \item BU: tends to underestimate
+                \item Similar $H_{norm}$ and NMI
+                \item Both valid solutions
+            \end{itemize}
+        \end{block}
+    \end{columns}
+\end{frame}
+
+% ============================================================================
+% CONCLUSION
+% ============================================================================
+\section{Conclusion}
+
+\begin{frame}{Summary}
+    \begin{block}{Paper Contributions}
+        \begin{itemize}
+            \item \textbf{Top-Down SBP:} Novel divisive approach to graph clustering
+            \item \textbf{Connectivity Snowball:} Efficient splitting heuristic
+            \item \textbf{Performance:} 7.7× speedup, 4.1× memory reduction, 403× distributed
+            \item \textbf{Impact:} Enables statistical inference on large-scale graphs
+        \end{itemize}
+    \end{block}
+    
+    \vspace{0.3cm}
+    
+    \begin{block}{Our Experimental Findings}
+        \begin{itemize}
+            \item \textbf{Validated paper claims:} Top-Down achieves 6-52× speedup vs Bottom-Up
+            \item \textbf{Algorithm trade-offs:} Top-Down for speed, Bottom-Up for many clusters
+            \item \textbf{Parallelization insights:} Bottom-Up scales better (2.5× speedup)
+            \item \textbf{Bottleneck identified:} MCMC takes 45-90\% of runtime
+        \end{itemize}
+    \end{block}
+    
+    \vspace{0.5cm}
+    
+    \begin{center}
+        \large
+        \textbf{Key Takeaway:} Sometimes the best optimization is to\\
+        \textit{completely flip the algorithm's direction!}
+    \end{center}
+\end{frame}
+
+\begin{frame}{References \& Questions}
+    \begin{block}{Paper}
+        \small
+        Ammar, O., Wolfe, C., \& Chaudhari, P. (2025). \textit{Top-Down Stochastic Block Partitioning.} HPDC '25.\\
+        \vspace{0.1cm}
+        \url{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}
+    \end{block}
+    
+    \begin{block}{Our Implementation}
+        \small
+        Top-Down + Bottom-Up with OpenMP parallelization\\
+        140 experiments, 9 graph configurations\\
+        Complete analysis with plots
+    \end{block}
+    
+    \vspace{0.3cm}
+    
+    \begin{center}
+        \LARGE \textbf{Questions?}
+        
+        \vspace{0.3cm}
+        
+        \normalsize
+        Thank you for your attention!
+    \end{center}
+\end{frame}
+
+\end{document}
+

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <omp.h>
 
 using namespace sbp;
 
@@ -22,8 +23,10 @@ struct BenchmarkResult {
     int num_edges;
     int target_clusters;
     std::string algorithm;
+    std::string execution_mode;
     int run_number;
     double runtime_seconds;
+    double mcmc_runtime_seconds;
     size_t memory_mb;
     double nmi;
     double mdl_raw;
@@ -38,7 +41,8 @@ BenchmarkResult run_single_benchmark(
     const std::vector<utils::ClusterId>& true_labels,
     int graph_id,
     utils::ClusterCount target_k,
-    const std::string& algorithm, 
+    const std::string& algorithm,
+    const std::string& execution_mode,
     int run_num,
     utils::ProposalCount proposals_per_split) 
 {
@@ -48,6 +52,7 @@ BenchmarkResult run_single_benchmark(
     result.num_edges = G.get_edge_count();
     result.target_clusters = target_k;
     result.algorithm = algorithm;
+    result.execution_mode = execution_mode;
     result.run_number = run_num;
     
     utils::BlockModel bm;
@@ -66,6 +71,7 @@ BenchmarkResult run_single_benchmark(
     
     // Collect metrics
     result.runtime_seconds = elapsed.count();
+    result.mcmc_runtime_seconds = bm.total_mcmc_time;
     result.memory_mb = utils::get_peak_memory_mb();
     result.nmi = utils::calculate_nmi(true_labels, bm.cluster_assignment);
     result.mdl_raw = utils::compute_H(bm);
@@ -77,8 +83,8 @@ BenchmarkResult run_single_benchmark(
 
 // Write CSV header
 void write_csv_header(std::ofstream& csv) {
-    csv << "graph_id,num_vertices,num_edges,target_clusters,algorithm,run_number,"
-        << "runtime_sec,memory_mb,nmi,mdl_raw,mdl_norm,clusters_found\n";
+    csv << "graph_id,num_vertices,num_edges,target_clusters,algorithm,execution_mode,run_number,"
+        << "runtime_sec,mcmc_runtime_sec,memory_mb,nmi,mdl_raw,mdl_norm,clusters_found\n";
 }
 
 // Append result to CSV
@@ -88,8 +94,10 @@ void append_result_to_csv(std::ofstream& csv, const BenchmarkResult& result) {
         << result.num_edges << ","
         << result.target_clusters << ","
         << result.algorithm << ","
+        << result.execution_mode << ","
         << result.run_number << ","
         << std::fixed << std::setprecision(6) << result.runtime_seconds << ","
+        << std::fixed << std::setprecision(6) << result.mcmc_runtime_seconds << ","
         << result.memory_mb << ","
         << std::fixed << std::setprecision(6) << result.nmi << ","
         << std::fixed << std::setprecision(2) << result.mdl_raw << ","
@@ -100,6 +108,7 @@ void append_result_to_csv(std::ofstream& csv, const BenchmarkResult& result) {
 
 int main(int argc, char* argv[]) {
     GraphGenerationMethod graphGenerationMethod = GraphGenerationMethod::STANDARD;
+    std::string execution_mode = "parallel"; // default to parallel
 
     if (argc > 1) {
         std::string arg = argv[1];
@@ -107,6 +116,14 @@ int main(int argc, char* argv[]) {
             graphGenerationMethod = GraphGenerationMethod::STANDARD;
         if (arg == "lfr")
             graphGenerationMethod = GraphGenerationMethod::LFR;
+    }
+    
+    if (argc > 2) {
+        execution_mode = argv[2];
+        if (execution_mode == "sequential") {
+            omp_set_num_threads(1);
+        }
+        // For "parallel" mode, use default (all available threads)
     }
 
     std::cout << "=== SBP Benchmark Suite ===\n";
@@ -120,6 +137,13 @@ int main(int argc, char* argv[]) {
         if (graphGenerationMethod == GraphGenerationMethod::LFR) {
             std::cout << "Graph generation method: lfr\n";
         }
+    }
+    
+    std::cout << "Execution mode: " << execution_mode << "\n";
+    if (execution_mode == "sequential") {
+        std::cout << "Threads: 1\n";
+    } else {
+        std::cout << "Threads: " << omp_get_max_threads() << "\n";
     }
 
     std::cout << "Estimated runtime: ~5-10 minutes\n\n";
@@ -160,13 +184,13 @@ int main(int argc, char* argv[]) {
             // Run Top-Down
             auto td_result = run_single_benchmark(
                 G, true_labels, graph_id, config->k,
-                "TopDown", run, PROPOSALS_PER_SPLIT);
+                "TopDown", execution_mode, run, PROPOSALS_PER_SPLIT);
             append_result_to_csv(csv, td_result);
             
             // Run Bottom-Up
             auto bu_result = run_single_benchmark(
                 G, true_labels, graph_id, config->k,
-                "BottomUp", run, PROPOSALS_PER_SPLIT);
+                "BottomUp", execution_mode, run, PROPOSALS_PER_SPLIT);
             append_result_to_csv(csv, bu_result);
             
             std::cout << " Done (TD: " << std::fixed << std::setprecision(3)

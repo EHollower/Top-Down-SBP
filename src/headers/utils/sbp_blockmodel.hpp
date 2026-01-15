@@ -20,6 +20,7 @@ struct BlockModel {
     BlockMatrix block_matrix;
     ClusterAssignment cluster_assignment;
     ClustersSizes clusters_sizes;
+    double total_mcmc_time{0.0};  // Accumulated MCMC refinement time in seconds
 
     BlockModel() = default;
 
