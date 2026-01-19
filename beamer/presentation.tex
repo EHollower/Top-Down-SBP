@@ -94,7 +94,8 @@
     \vspace{-0.5cm}
     \begin{center}
         \small
-        \textbf{Paper:} Ammar, O., Wolfe, C., \& Chaudhari, P. (2025)\\
+        \textbf{Paper} Frank Wanye, Vitaliy Gleyzer, Edward Kao, Wu-chun Feng \\
+        \textit{Top-Down Stochastic Block Partitioning}\\
         \textit{HPDC '25: 34th International Symposium on High-Performance\\Parallel and Distributed Computing}\\
         \vspace{0.3cm}
         \href{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}{\textcolor{blue}{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}}
@@ -757,13 +758,11 @@
 % ============================================================================
 
 \begin{frame}{Experimental Setup}
-    \begin{block}{Hardware Configuration}
+    \begin{block}{Experimental Design}
         \begin{itemize}
-            \item \textbf{CPU:} AMD Ryzen 9 7845HX (12 cores, 24 threads)
-            \item \textbf{RAM:} 64GB DDR5
-            \item \textbf{Compiler:} GCC 14.2 with -O3 -march=native
-            \item \textbf{OS:} Ubuntu 24.04 LTS
-            \item \textbf{Parallelization:} OpenMP 5.0
+            \item \textbf{Total runs:} 140 benchmark executions
+            \item \textbf{Modes:} Sequential (1 thread) and Parallel (24 threads)
+            \item \textbf{Metrics:} Runtime, NMI accuracy, Memory, MCMC time
         \end{itemize}
     \end{block}
     
@@ -780,13 +779,7 @@
         \end{itemize}
     \end{block}
     
-    \begin{block}{Experimental Design}
-        \begin{itemize}
-            \item \textbf{Total runs:} 140 benchmark executions
-            \item \textbf{Modes:} Sequential (1 thread) and Parallel (24 threads)
-            \item \textbf{Metrics:} Runtime, NMI accuracy, Memory, MCMC time
-        \end{itemize}
-    \end{block}
+
 \end{frame}
 
 \begin{frame}{Sequential Mode: Algorithm Comparison}
@@ -862,23 +855,22 @@
 \end{frame}
 
 \begin{frame}{Memory \& MCMC Analysis}
+    \vspace*{-0.3cm}
     \begin{columns}[T]
         \column{0.48\textwidth}
         \begin{center}
             \includegraphics[width=0.95\textwidth]{images/memory_vs_size.png}
-            
             {\small Memory Usage}
         \end{center}
         
         \column{0.48\textwidth}
         \begin{center}
             \includegraphics[width=0.95\textwidth]{images/mcmc_runtime_vs_size.png}
-            
             {\small MCMC Runtime}
         \end{center}
     \end{columns}
     
-    \vspace{0.3cm}
+    \vspace{-0.3cm}
     
     \begin{block}{Key Observations}
         \small
@@ -888,6 +880,8 @@
         \end{itemize}
     \end{block}
     
+    \vspace{-0.25cm}
+
     \begin{block}{Key Findings: Many Clusters (K $\geq$ N/2)}
         \begin{itemize}
             \item \textbf{N=200, K=75:} Bottom-Up \textbf{24.2× faster} (0.06s vs 1.41s)
@@ -1000,6 +994,7 @@
             \small \textbf{Memory Usage Scaling}
         \end{center}
         
+        \vspace{-0.25cm}
         \begin{block}{Memory Efficiency}
             \begin{itemize}
                 \item Both algorithms: O(N + K²) memory
@@ -1017,6 +1012,7 @@
             \small \textbf{MCMC Refinement Time}
         \end{center}
         
+        \vspace{-0.3cm}
         \begin{block}{MCMC Overhead}
             \begin{itemize}
                 \item Bottom-Up: 45-50\% of runtime
@@ -1090,8 +1086,7 @@
         \end{block}
     \end{columns}
     
-    \vspace{0.5cm}
-    
+    \vspace{0.3cm}
     \begin{alertblock}{Complementary Approaches}
         \textbf{Paper:} Validates Top-Down on massive graphs (distributed setting)\\
         \textbf{Our work:} Quantifies algorithm trade-offs (shared memory setting)
@@ -1126,7 +1121,7 @@
                     \midrule
                     500 & 0.039s & 13.0× \\
                     1000 & 0.203s & 16.6× \\
-                    \alert{8000} & \alert{NA} & \alert{52.0×} \\
+                    \alert{8000} & \alert{NA} & \alert{NA} \\
                     \bottomrule
                 \end{tabular}
             \end{center}
@@ -1168,8 +1163,6 @@
             \end{itemize}
         \end{block}
     \end{columns}
-    
-    \vspace{0.3cm}
     
     \begin{center}
         \includegraphics[width=0.65\textwidth]{images/speedup_comparison.png}
@@ -1655,7 +1648,8 @@
 \begin{frame}{References \& Questions}
     \begin{block}{Paper}
         \small
-        Ammar, O., Wolfe, C., \& Chaudhari, P. (2025). \textit{Top-Down Stochastic Block Partitioning.} HPDC '25.\\
+        Frank Wanye, Vitaliy Gleyzer, Edward Kao, Wu-chun Feng (2025). \\
+        \textit{Top-Down Stochastic Block Partitioning.} HPDC '25.\\
         \vspace{0.1cm}
         \url{https://dl.acm.org/doi/pdf/10.1145/3731545.3731589}
     \end{block}
@@ -1670,7 +1664,7 @@
     \vspace{0.3cm}
     
     \begin{center}
-        \LARGE \textbf{Questions?}
+        \textbf{https://github.com/EHollower/Top-Down-SBP}
         
         \vspace{0.3cm}
         
